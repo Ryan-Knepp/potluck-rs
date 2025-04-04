@@ -52,6 +52,7 @@ pub enum Potluck {
     Table,
     Id,
     OrganizationId,
+    #[allow(clippy::enum_variant_names)]
     PotluckSeriesId,
     HostType,
     HostId,
