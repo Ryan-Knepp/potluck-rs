@@ -92,8 +92,8 @@ impl MigrationTrait for Migration {
         manager
             .create_type(
                 Type::create()
-                    .as_enum(AttendeeTypeEnum)
-                    .values(AttendeeType::iter())
+                    .as_enum(AttendeeType)
+                    .values(AttendeeTypeVariants::iter())
                     .to_owned(),
             )
             .await?;
@@ -105,8 +105,8 @@ impl MigrationTrait for Migration {
             .col(uuid(Potluck::PotluckSeriesId))
             .col(enumeration(
                 Potluck::HostType,
-                AttendeeTypeEnum,
-                AttendeeType::iter(),
+                AttendeeType,
+                AttendeeTypeVariants::iter(),
             ))
             .col(uuid(Potluck::HostId))
             .foreign_key(
@@ -133,8 +133,8 @@ impl MigrationTrait for Migration {
             .col(uuid(Attendance::OrganizationId))
             .col(enumeration(
                 Attendance::AttendeeType,
-                AttendeeTypeEnum,
-                AttendeeType::iter(),
+                AttendeeType,
+                AttendeeTypeVariants::iter(),
             ))
             .col(uuid(Attendance::AttendeeId))
             .foreign_key(
@@ -222,7 +222,7 @@ impl MigrationTrait for Migration {
             .await?;
 
         manager
-            .drop_type(Type::drop().name(AttendeeTypeEnum).to_owned())
+            .drop_type(Type::drop().name(AttendeeType).to_owned())
             .await?;
 
         manager

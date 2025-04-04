@@ -69,10 +69,10 @@ pub enum Attendance {
 }
 
 #[derive(DeriveIden)]
-pub struct AttendeeTypeEnum;
+pub struct AttendeeType;
 
 #[derive(DeriveIden, EnumIter)]
-pub enum AttendeeType {
+pub enum AttendeeTypeVariants {
     Person,
     Household,
 }
