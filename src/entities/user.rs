@@ -4,17 +4,17 @@ use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq, Serialize, Deserialize)]
-#[sea_orm(table_name = "potluck_series")]
+#[sea_orm(table_name = "user")]
 pub struct Model {
     pub created_at: DateTime,
     pub updated_at: DateTime,
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
+    pub person_id: Uuid,
     pub organization_id: Uuid,
-    pub name: String,
-    pub start_date: Date,
-    pub end_date: Date,
-    pub description: Option<String>,
+    pub access_token: String,
+    pub refresh_token: Option<String>,
+    pub token_expires_at: DateTime,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -27,8 +27,14 @@ pub enum Relation {
         on_delete = "Cascade"
     )]
     Organization,
-    #[sea_orm(has_many = "super::potluck::Entity")]
-    Potluck,
+    #[sea_orm(
+        belongs_to = "super::person::Entity",
+        from = "Column::PersonId",
+        to = "super::person::Column::Id",
+        on_update = "NoAction",
+        on_delete = "SetNull"
+    )]
+    Person,
 }
 
 impl Related<super::organization::Entity> for Entity {
@@ -37,9 +43,9 @@ impl Related<super::organization::Entity> for Entity {
     }
 }
 
-impl Related<super::potluck::Entity> for Entity {
+impl Related<super::person::Entity> for Entity {
     fn to() -> RelationDef {
-        Relation::Potluck.def()
+        Relation::Person.def()
     }
 }
 

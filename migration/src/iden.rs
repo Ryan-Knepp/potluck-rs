@@ -22,6 +22,9 @@ pub enum Person {
     Phone,
     Address,
     AvatarUrl,
+    IsSignedUp,
+    CanHost,
+    IsChild,
     HouseholdId,
 }
 
@@ -32,7 +35,8 @@ pub enum Household {
     PcoId,
     OrganizationId,
     Name,
-    PrimaryContactId,
+    IsSignedUp,
+    CanHost,
     AvatarUrl,
 }
 
@@ -75,4 +79,15 @@ pub struct AttendeeType;
 pub enum AttendeeTypeVariants {
     Person,
     Household,
+}
+
+#[derive(DeriveIden)]
+pub enum User {
+    Table,
+    Id,
+    PersonId,
+    OrganizationId,
+    AccessToken,
+    RefreshToken,
+    TokenExpiresAt,
 }

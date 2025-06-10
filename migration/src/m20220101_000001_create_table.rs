@@ -29,6 +29,9 @@ impl MigrationTrait for Migration {
             .col(string_null(Person::Phone))
             .col(json(Person::Address))
             .col(string_null(Person::AvatarUrl))
+            .col(boolean(Person::IsSignedUp).default(false))
+            .col(boolean(Person::CanHost).default(false))
+            .col(boolean(Person::IsChild).default(false))
             .col(uuid_null(Person::HouseholdId))
             .to_owned();
         manager.create_table(table).await?;
@@ -39,7 +42,8 @@ impl MigrationTrait for Migration {
             .col(string_uniq(Household::PcoId))
             .col(uuid(Household::OrganizationId))
             .col(string(Household::Name))
-            .col(uuid(Household::PrimaryContactId))
+            .col(boolean(Household::IsSignedUp).default(false))
+            .col(boolean(Household::CanHost).default(false))
             .col(string_null(Household::AvatarUrl))
             .foreign_key(
                 ForeignKey::create()
@@ -47,13 +51,6 @@ impl MigrationTrait for Migration {
                     .from(Household::Table, Household::OrganizationId)
                     .to(Organization::Table, Organization::Id)
                     .on_delete(ForeignKeyAction::Cascade),
-            )
-            .foreign_key(
-                ForeignKey::create()
-                    .name("fk_household_primary_contact")
-                    .from(Household::Table, Household::PrimaryContactId)
-                    .to(Person::Table, Person::Id)
-                    .on_delete(ForeignKeyAction::SetNull),
             )
             .to_owned();
         manager.create_table(table).await?;

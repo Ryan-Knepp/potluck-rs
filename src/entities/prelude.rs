@@ -6,3 +6,4 @@ pub use super::organization::Entity as Organization;
 pub use super::person::Entity as Person;
 pub use super::potluck::Entity as Potluck;
 pub use super::potluck_series::Entity as PotluckSeries;
+pub use super::user::Entity as User;

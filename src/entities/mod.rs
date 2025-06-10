@@ -9,3 +9,4 @@ pub mod person;
 pub mod potluck;
 pub mod potluck_series;
 pub mod sea_orm_active_enums;
+pub mod user;
