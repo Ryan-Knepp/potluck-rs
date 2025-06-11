@@ -1,7 +1,6 @@
 use async_session::async_trait;
 use axum_login::{AuthUser, AuthnBackend, UserId};
 use chrono::TimeDelta;
-use migration::cli;
 use oauth2::{AuthorizationCode, TokenResponse};
 use oauth2::{CsrfToken, HttpClientError, Scope, basic::BasicRequestTokenError};
 use reqwest::Url;
@@ -19,7 +18,7 @@ impl AuthUser for user::Model {
     type Id = Uuid;
 
     fn id(&self) -> Self::Id {
-        self.id.clone()
+        self.id
     }
 
     fn session_auth_hash(&self) -> &[u8] {
@@ -285,12 +284,10 @@ impl AuthnBackend for Backend {
         };
 
         if is_new_person && household.is_some() {
-            let user = user.clone();
             let db = self.db.clone();
-            let client = self.client.clone();
             let pco_id = household.unwrap().pco_id;
             spawn(async move {
-                if let Err(e) = get_household_data(pco_id, user, db, client).await {
+                if let Err(e) = get_household_data(pco_id, db).await {
                     tracing::error!("Error getting household data: {:?}", e);
                 }
             });
@@ -319,12 +316,7 @@ impl AuthnBackend for Backend {
 // Note that we've supplied our concrete backend here.
 pub type AuthSession = axum_login::AuthSession<Backend>;
 
-async fn get_household_data(
-    pco_id: String,
-    user: user::Model,
-    db: DatabaseConnection,
-    client: OauthClient,
-) -> Result<(), BackendError> {
+async fn get_household_data(pco_id: String, db: DatabaseConnection) -> Result<(), BackendError> {
     let household = Household::find()
         .filter(household::Column::PcoId.eq(pco_id))
         .one(&db)

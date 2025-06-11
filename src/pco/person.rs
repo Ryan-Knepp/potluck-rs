@@ -2,7 +2,6 @@ use reqwest;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
-use tracing::{debug, error, info};
 
 const BASE_URL: &str = "https://api.planningcenteronline.com/people/v2/";
 const INCLUDED: &str = "include=addresses,emails,households,organization,phone_numbers";
