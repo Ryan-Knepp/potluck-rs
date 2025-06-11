@@ -3,7 +3,12 @@ mod entities;
 mod pco;
 
 use auth::user::{AuthSession, Backend};
-use axum::{Router, response::IntoResponse, routing::get};
+use axum::{
+    Router,
+    extract::State,
+    response::{Html, IntoResponse},
+    routing::{get, get_service},
+};
 use axum_login::{
     AuthManagerLayerBuilder, login_required,
     tower_sessions::{
@@ -12,6 +17,7 @@ use axum_login::{
     },
 };
 use migration::{Migrator, MigratorTrait};
+use minijinja::Environment;
 use oauth2::{
     AuthUrl, ClientId, ClientSecret, EndpointNotSet, EndpointSet, RedirectUrl, TokenUrl,
     basic::BasicClient,
@@ -19,7 +25,9 @@ use oauth2::{
 use reqwest::StatusCode;
 use sea_orm::{Database, DatabaseConnection};
 use std::env;
+use std::sync::Arc;
 use tokio::net::TcpListener;
+use tower_http::services::ServeDir;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 pub type OauthClient =
@@ -60,9 +68,12 @@ async fn main() -> anyhow::Result<()> {
         .set_token_uri(token_url)
         .set_redirect_uri(redirect_url);
 
+    let templates = setup_templates().await;
+
     let state = AppState {
         db: db.clone(),
         client: client.clone(),
+        templates: Arc::new(templates),
     };
 
     let session_store = MemoryStore::default();
@@ -81,10 +92,11 @@ async fn main() -> anyhow::Result<()> {
     let app = Router::new()
         .route("/other", get(other))
         .route("/me", get(me))
-        .with_state(state)
         .route_layer(login_required!(Backend, login_url = "/login"))
+        .route("/", get(index))
+        .with_state(state)
         .merge(auth::router::router())
-        .route("/", get(root))
+        .nest_service("/static", get_service(ServeDir::new("static")))
         .layer(auth_layer);
 
     let listener = TcpListener::bind("0.0.0.0:3000").await.unwrap();
@@ -97,11 +109,19 @@ async fn main() -> anyhow::Result<()> {
 struct AppState {
     db: DatabaseConnection,
     client: OauthClient,
+    templates: Arc<Environment<'static>>,
 }
 
-// basic handler that responds with a static string
-async fn root() -> &'static str {
-    "Hello, World!"
+async fn setup_templates() -> Environment<'static> {
+    let mut env = Environment::new();
+    env.set_loader(minijinja::path_loader("templates"));
+    env
+}
+
+async fn index(State(state): State<AppState>) -> Html<String> {
+    let tmpl = state.templates.get_template("index.html").unwrap();
+    let html = tmpl.render(minijinja::context! {}).unwrap();
+    Html(html)
 }
 
 async fn me(auth_session: AuthSession) -> impl IntoResponse {
