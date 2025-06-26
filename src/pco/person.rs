@@ -1,3 +1,4 @@
+use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use reqwest;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -60,6 +61,8 @@ pub struct PCOResource {
 pub struct Meta {
     pub can_include: Vec<String>,
     pub parent: Parent,
+    pub total_count: Option<usize>,
+    pub count: Option<usize>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -67,6 +70,14 @@ pub struct Parent {
     pub id: String,
     #[serde(rename = "type")]
     pub resource_type: String,
+}
+
+#[derive(Serialize, Debug)]
+pub struct PeoplePage {
+    pub people: Vec<PersonData>,
+    pub total_count: usize,
+    pub count: usize,
+    pub page: usize,
 }
 
 pub async fn get_user_info(access_token: &String) -> Result<Option<PersonData>, reqwest::Error> {
@@ -228,5 +239,107 @@ fn parse_person_resource(
         phone: person_phone,
         organization: person_organization,
         household: person_household,
+    })
+}
+
+pub async fn get_people(
+    access_token: &str,
+    page: usize,
+    per_page: usize,
+    name: Option<String>,
+) -> Result<PeoplePage, reqwest::Error> {
+    let offset = (page - 1) * per_page;
+    let mut url = format!(
+        "{BASE_URL}people?{INCLUDED}&per_page={}&offset={}&order=last_name&where[status]=active",
+        per_page, offset
+    );
+    if let Some(name) = name {
+        url.push_str(&format!(
+            "&where[search_name]={}",
+            utf8_percent_encode(&name, NON_ALPHANUMERIC)
+        ));
+    }
+    let response = reqwest::Client::new()
+        .get(url)
+        .bearer_auth(access_token)
+        .send()
+        .await?
+        .json::<PCOPersonResponse>()
+        .await?;
+
+    // Build lookup maps from included
+    let mut addresses: HashMap<String, Value> = HashMap::new();
+    let mut emails: HashMap<String, String> = HashMap::new();
+    let mut phones: HashMap<String, String> = HashMap::new();
+    let mut organizations: HashMap<String, OrganizationInfo> = HashMap::new();
+    let mut households: HashMap<String, HouseholdInfo> = HashMap::new();
+
+    for item in response.included {
+        let item_type = item.resource_type;
+        let item_id = item.id;
+
+        match item_type.as_str() {
+            "Address" => {
+                addresses.insert(item_id, item.attributes);
+            }
+            "Email" => {
+                if let Some(address) = item.attributes["address"].as_str() {
+                    emails.insert(item_id, address.to_string());
+                }
+            }
+            "PhoneNumber" => {
+                if let Some(number) = item.attributes["number"].as_str() {
+                    phones.insert(item_id, number.to_string());
+                }
+            }
+            "Organization" => {
+                organizations.insert(
+                    item_id.clone(),
+                    OrganizationInfo {
+                        id: item_id,
+                        name: item.attributes["name"].as_str().unwrap_or("").to_string(),
+                        avatar_url: item.attributes["avatar_url"]
+                            .as_str()
+                            .map(|s| s.to_string()),
+                    },
+                );
+            }
+            "Household" => {
+                households.insert(
+                    item_id.clone(),
+                    HouseholdInfo {
+                        id: item_id,
+                        name: item.attributes["name"].as_str().unwrap_or("").to_string(),
+                        avatar: item.attributes["avatar"].as_str().map(|s| s.to_string()),
+                    },
+                );
+            }
+            _ => {}
+        }
+    }
+
+    // Parse each person in the response
+    let mut people = Vec::new();
+    for person in response.data {
+        if let Some(person_data) = parse_person_resource(
+            person,
+            organizations.clone(),
+            addresses.clone(),
+            emails.clone(),
+            phones.clone(),
+            households.clone(),
+        ) {
+            people.push(person_data);
+        }
+    }
+
+    let total_count = response.meta.total_count.unwrap_or(0);
+    let count = response.meta.count.unwrap_or(0);
+
+    Ok(PeoplePage {
+        people,
+        total_count,
+        count,
+        page,
     })
 }

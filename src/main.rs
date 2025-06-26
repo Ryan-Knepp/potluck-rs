@@ -1,37 +1,57 @@
 mod auth;
 mod entities;
 mod pco;
+mod routes;
 
-use auth::user::{AuthSession, Backend};
+use crate::{
+    entities::{organization, person},
+    routes::dashboard::dashboard,
+    routes::search::{search, search_partial},
+};
+use auth::user::{AuthSession, Backend, ensure_valid_access_token};
 use axum::{
-    Router,
-    extract::State,
-    response::{Html, IntoResponse},
+    Json, Router,
+    extract::{Query, State},
+    response::{Html, IntoResponse, Redirect},
     routing::{get, get_service},
 };
 use axum_login::{
     AuthManagerLayerBuilder, login_required,
     tower_sessions::{
-        Expiry, MemoryStore, SessionManagerLayer,
+        ExpiredDeletion, Expiry, SessionManagerLayer,
         cookie::{SameSite, time},
     },
 };
+use entities::user::Entity as UserEntity;
 use migration::{Migrator, MigratorTrait};
 use minijinja::Environment;
 use oauth2::{
     AuthUrl, ClientId, ClientSecret, EndpointNotSet, EndpointSet, RedirectUrl, TokenUrl,
     basic::BasicClient,
 };
+use pco::person::{PeoplePage, get_people};
 use reqwest::StatusCode;
-use sea_orm::{Database, DatabaseConnection};
+use routes::api::api_pco;
+use routes::api::api_people;
+use routes::me::me;
+use sea_orm::{Database, DatabaseConnection, EntityTrait, sqlx::PgPool};
+use serde::Deserialize;
+use std::collections::HashMap;
 use std::env;
 use std::sync::Arc;
-use tokio::net::TcpListener;
+use tokio::{net::TcpListener, signal, task::AbortHandle};
 use tower_http::services::ServeDir;
+use tower_sessions_sqlx_store::PostgresStore;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 pub type OauthClient =
     BasicClient<EndpointSet, EndpointNotSet, EndpointNotSet, EndpointNotSet, EndpointSet>;
+
+#[derive(Deserialize)]
+struct PeopleQuery {
+    offset: Option<usize>,
+    name: Option<String>,
+}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -44,10 +64,20 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     let db_url = env::var("DATABASE_URL").expect("DATABASE_URL is not set in .env file");
-    let db = Database::connect(db_url)
+    let db = Database::connect(&db_url)
         .await
         .expect("Cannot connect to db");
     Migrator::up(&db, None).await.unwrap();
+
+    let pool = PgPool::connect(&db_url).await?;
+    let session_store = PostgresStore::new(pool);
+    session_store.migrate().await?;
+
+    let deletion_task = tokio::task::spawn(
+        session_store
+            .clone()
+            .continuously_delete_expired(tokio::time::Duration::from_secs(60)),
+    );
 
     let client_id = env::var("PLANNING_CENTER_CLIENT_ID")
         .map(ClientId::new)
@@ -76,7 +106,6 @@ async fn main() -> anyhow::Result<()> {
         templates: Arc::new(templates),
     };
 
-    let session_store = MemoryStore::default();
     let session_layer = SessionManagerLayer::new(session_store)
         .with_secure(false)
         .with_same_site(SameSite::Lax) // Ensure we send the cookie from the OAuth redirect.
@@ -90,19 +119,50 @@ async fn main() -> anyhow::Result<()> {
     let auth_layer = AuthManagerLayerBuilder::new(backend, session_layer).build();
 
     let app = Router::new()
-        .route("/other", get(other))
+        .route("/dashboard", get(dashboard))
         .route("/me", get(me))
-        .route_layer(login_required!(Backend, login_url = "/login"))
+        .route("/search", get(search))
+        .route("/search/partial", get(search_partial))
+        .route("/api/people", get(api_people))
+        .route("/api/pco", get(api_pco))
         .route("/", get(index))
-        .with_state(state)
         .merge(auth::router::router())
+        .with_state(state)
         .nest_service("/static", get_service(ServeDir::new("static")))
         .layer(auth_layer);
 
     let listener = TcpListener::bind("0.0.0.0:3000").await.unwrap();
-    axum::serve(listener, app).await?;
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal(deletion_task.abort_handle()))
+        .await?;
+
+    deletion_task.await??;
 
     Ok(())
+}
+
+async fn shutdown_signal(deletion_task_abort_handle: AbortHandle) {
+    let ctrl_c = async {
+        signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl+C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        signal::unix::signal(signal::unix::SignalKind::terminate())
+            .expect("failed to install signal handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => { deletion_task_abort_handle.abort() },
+        _ = terminate => { deletion_task_abort_handle.abort() },
+    }
 }
 
 #[derive(Clone)]
@@ -118,20 +178,12 @@ async fn setup_templates() -> Environment<'static> {
     env
 }
 
-async fn index(State(state): State<AppState>) -> Html<String> {
-    let tmpl = state.templates.get_template("index.html").unwrap();
-    let html = tmpl.render(minijinja::context! {}).unwrap();
-    Html(html)
-}
-
-async fn me(auth_session: AuthSession) -> impl IntoResponse {
-    match auth_session.user {
-        Some(_user) => "It's me ya boi!".into_response(),
-
-        None => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+async fn index(State(state): State<AppState>, auth_session: AuthSession) -> impl IntoResponse {
+    if auth_session.user.is_some() {
+        Redirect::to("/dashboard").into_response()
+    } else {
+        let tmpl = state.templates.get_template("index.html").unwrap();
+        let html = tmpl.render(minijinja::context! {}).unwrap();
+        Html(html).into_response()
     }
-}
-
-async fn other() -> &'static str {
-    "Doesn't need auth"
 }

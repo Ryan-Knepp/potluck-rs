@@ -9,6 +9,8 @@ use axum_login::tower_sessions::Session;
 use oauth2::CsrfToken;
 use serde::Deserialize;
 
+use crate::AppState;
+
 use super::user::{AuthSession, Credentials};
 
 pub const NEXT_URL_KEY: &str = "auth.next-url";
@@ -27,7 +29,7 @@ pub struct NextUrl {
     next: Option<String>,
 }
 
-pub fn router() -> Router {
+pub fn router() -> Router<AppState> {
     Router::new()
         .route("/login", post(self::post::login))
         .route("/login", get(self::get::login))
@@ -60,26 +62,30 @@ mod post {
 }
 
 mod get {
+    use axum::extract::State;
+
+    use crate::AppState;
+
     use super::*;
 
-    pub async fn login(Query(NextUrl { next }): Query<NextUrl>) -> Html<String> {
+    pub async fn login(
+        Query(NextUrl { next }): Query<NextUrl>,
+        State(state): State<AppState>,
+    ) -> Result<Html<String>, StatusCode> {
         let next_param = next.map_or_else(String::new, |url| format!("?next={}", url));
 
-        Html(format!(
-            r#"<!DOCTYPE html>
-<html>
-<head>
-    <title>Potluck Login</title>
-</head>
-<body>
-    <h1>Potluck</h1>
-    <form action="/login{}" method="post">
-        <button type="submit">Login with Planning Center</button>
-    </form>
-</body>
-</html>"#,
-            next_param
-        ))
+        let tmpl = state
+            .templates
+            .get_template("login.html")
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+        let html = tmpl
+            .render(minijinja::context! {
+                next_param => next_param,
+            })
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+        Ok(Html(html))
     }
 
     pub async fn logout(mut auth_session: AuthSession) -> impl IntoResponse {
@@ -124,7 +130,7 @@ mod get {
         if let Ok(Some(next)) = session.remove::<String>(NEXT_URL_KEY).await {
             Redirect::to(&next).into_response()
         } else {
-            Redirect::to("/me").into_response()
+            Redirect::to("/dashboard").into_response()
         }
     }
 }
