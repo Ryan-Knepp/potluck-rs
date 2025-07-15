@@ -22,6 +22,8 @@ pub enum Relation {
     Attendance,
     #[sea_orm(has_many = "super::household::Entity")]
     Household,
+    #[sea_orm(has_many = "super::pairing_history::Entity")]
+    PairingHistory,
     #[sea_orm(has_many = "super::potluck::Entity")]
     Potluck,
     #[sea_orm(has_many = "super::potluck_series::Entity")]
@@ -39,6 +41,12 @@ impl Related<super::attendance::Entity> for Entity {
 impl Related<super::household::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Household.def()
+    }
+}
+
+impl Related<super::pairing_history::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::PairingHistory.def()
     }
 }
 

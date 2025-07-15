@@ -1,4 +1,3 @@
-use sea_orm::EnumIter;
 use sea_orm_migration::prelude::*;
 
 // Define table names
@@ -58,8 +57,8 @@ pub enum Potluck {
     OrganizationId,
     #[allow(clippy::enum_variant_names)]
     PotluckSeriesId,
-    HostType,
-    HostId,
+    HostPersonId,
+    HostHouseholdId,
 }
 
 #[derive(DeriveIden)]
@@ -68,17 +67,8 @@ pub enum Attendance {
     Id,
     PotluckId,
     OrganizationId,
-    AttendeeType,
-    AttendeeId,
-}
-
-#[derive(DeriveIden)]
-pub struct AttendeeType;
-
-#[derive(DeriveIden, EnumIter)]
-pub enum AttendeeTypeVariants {
-    Person,
-    Household,
+    AttendeePersonId,
+    AttendeeHouseholdId,
 }
 
 #[derive(DeriveIden)]
@@ -90,4 +80,16 @@ pub enum User {
     AccessToken,
     RefreshToken,
     TokenExpiresAt,
+}
+
+#[derive(DeriveIden)]
+pub enum PairingHistory {
+    Table,
+    Id,
+    PotluckId,
+    OrganizationId,
+    EntityAPersonId,
+    EntityAHouseholdId,
+    EntityBPersonId,
+    EntityBHouseholdId,
 }

@@ -4,7 +4,7 @@ use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq, Serialize, Deserialize)]
-#[sea_orm(table_name = "attendance")]
+#[sea_orm(table_name = "pairing_history")]
 pub struct Model {
     pub created_at: DateTime,
     pub updated_at: DateTime,
@@ -12,20 +12,30 @@ pub struct Model {
     pub id: Uuid,
     pub potluck_id: Uuid,
     pub organization_id: Uuid,
-    pub attendee_person_id: Option<Uuid>,
-    pub attendee_household_id: Option<Uuid>,
+    pub entity_a_person_id: Option<Uuid>,
+    pub entity_a_household_id: Option<Uuid>,
+    pub entity_b_person_id: Option<Uuid>,
+    pub entity_b_household_id: Option<Uuid>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
     #[sea_orm(
         belongs_to = "super::household::Entity",
-        from = "Column::AttendeeHouseholdId",
+        from = "Column::EntityAHouseholdId",
         to = "super::household::Column::Id",
         on_update = "NoAction",
         on_delete = "Cascade"
     )]
-    Household,
+    Household2,
+    #[sea_orm(
+        belongs_to = "super::household::Entity",
+        from = "Column::EntityBHouseholdId",
+        to = "super::household::Column::Id",
+        on_update = "NoAction",
+        on_delete = "Cascade"
+    )]
+    Household1,
     #[sea_orm(
         belongs_to = "super::organization::Entity",
         from = "Column::OrganizationId",
@@ -36,12 +46,20 @@ pub enum Relation {
     Organization,
     #[sea_orm(
         belongs_to = "super::person::Entity",
-        from = "Column::AttendeePersonId",
+        from = "Column::EntityAPersonId",
         to = "super::person::Column::Id",
         on_update = "NoAction",
         on_delete = "Cascade"
     )]
-    Person,
+    Person2,
+    #[sea_orm(
+        belongs_to = "super::person::Entity",
+        from = "Column::EntityBPersonId",
+        to = "super::person::Column::Id",
+        on_update = "NoAction",
+        on_delete = "Cascade"
+    )]
+    Person1,
     #[sea_orm(
         belongs_to = "super::potluck::Entity",
         from = "Column::PotluckId",
@@ -52,21 +70,9 @@ pub enum Relation {
     Potluck,
 }
 
-impl Related<super::household::Entity> for Entity {
-    fn to() -> RelationDef {
-        Relation::Household.def()
-    }
-}
-
 impl Related<super::organization::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Organization.def()
-    }
-}
-
-impl Related<super::person::Entity> for Entity {
-    fn to() -> RelationDef {
-        Relation::Person.def()
     }
 }
 

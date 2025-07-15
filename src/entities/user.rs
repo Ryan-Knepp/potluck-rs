@@ -39,7 +39,7 @@ pub enum Relation {
         from = "Column::PersonId",
         to = "super::person::Column::Id",
         on_update = "NoAction",
-        on_delete = "SetNull"
+        on_delete = "Cascade"
     )]
     Person,
 }

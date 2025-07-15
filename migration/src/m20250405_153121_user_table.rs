@@ -20,7 +20,7 @@ impl MigrationTrait for Migration {
                     .name("fk_user_person")
                     .from(User::Table, User::PersonId)
                     .to(Person::Table, Person::Id)
-                    .on_delete(ForeignKeyAction::SetNull),
+                    .on_delete(ForeignKeyAction::Cascade),
             )
             .foreign_key(
                 ForeignKey::create()

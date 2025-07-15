@@ -1,5 +1,3 @@
-use sea_orm_migration::prelude::extension::postgres::Type;
-use sea_orm_migration::sea_orm::Iterable;
 use sea_orm_migration::{prelude::*, schema::*};
 
 use crate::iden::*;
@@ -85,27 +83,13 @@ impl MigrationTrait for Migration {
             .to_owned();
         manager.create_table(table).await?;
 
-        // Create enum for host_type
-        manager
-            .create_type(
-                Type::create()
-                    .as_enum(AttendeeType)
-                    .values(AttendeeTypeVariants::iter())
-                    .to_owned(),
-            )
-            .await?;
-
         // Create Potluck Table
         let table = table_auto(Potluck::Table)
             .col(pk_uuid(Potluck::Id))
             .col(uuid(Potluck::OrganizationId))
             .col(uuid(Potluck::PotluckSeriesId))
-            .col(enumeration(
-                Potluck::HostType,
-                AttendeeType,
-                AttendeeTypeVariants::iter(),
-            ))
-            .col(uuid(Potluck::HostId))
+            .col(uuid_null(Potluck::HostPersonId))
+            .col(uuid_null(Potluck::HostHouseholdId))
             .foreign_key(
                 ForeignKey::create()
                     .name("fk_potluck_organization")
@@ -120,6 +104,20 @@ impl MigrationTrait for Migration {
                     .to(PotluckSeries::Table, PotluckSeries::Id)
                     .on_delete(ForeignKeyAction::Cascade),
             )
+            .foreign_key(
+                ForeignKey::create()
+                    .name("fk_potluck_host_person")
+                    .from(Potluck::Table, Potluck::HostPersonId)
+                    .to(Person::Table, Person::Id)
+                    .on_delete(ForeignKeyAction::SetNull),
+            )
+            .foreign_key(
+                ForeignKey::create()
+                    .name("fk_potluck_host_household")
+                    .from(Potluck::Table, Potluck::HostHouseholdId)
+                    .to(Household::Table, Household::Id)
+                    .on_delete(ForeignKeyAction::SetNull),
+            )
             .to_owned();
         manager.create_table(table).await?;
 
@@ -128,12 +126,8 @@ impl MigrationTrait for Migration {
             .col(pk_uuid(Attendance::Id))
             .col(uuid(Attendance::PotluckId))
             .col(uuid(Attendance::OrganizationId))
-            .col(enumeration(
-                Attendance::AttendeeType,
-                AttendeeType,
-                AttendeeTypeVariants::iter(),
-            ))
-            .col(uuid(Attendance::AttendeeId))
+            .col(uuid_null(Attendance::AttendeePersonId))
+            .col(uuid_null(Attendance::AttendeeHouseholdId))
             .foreign_key(
                 ForeignKey::create()
                     .name("fk_attendance_potluck")
@@ -146,6 +140,20 @@ impl MigrationTrait for Migration {
                     .name("fk_attendance_organization")
                     .from(Attendance::Table, Attendance::OrganizationId)
                     .to(Organization::Table, Organization::Id)
+                    .on_delete(ForeignKeyAction::Cascade),
+            )
+            .foreign_key(
+                ForeignKey::create()
+                    .name("fk_attendance_person")
+                    .from(Attendance::Table, Attendance::AttendeePersonId)
+                    .to(Person::Table, Person::Id)
+                    .on_delete(ForeignKeyAction::Cascade),
+            )
+            .foreign_key(
+                ForeignKey::create()
+                    .name("fk_attendance_household")
+                    .from(Attendance::Table, Attendance::AttendeeHouseholdId)
+                    .to(Household::Table, Household::Id)
                     .on_delete(ForeignKeyAction::Cascade),
             )
             .to_owned();
@@ -216,10 +224,6 @@ impl MigrationTrait for Migration {
 
         manager
             .drop_table(Table::drop().table(PotluckSeries::Table).to_owned())
-            .await?;
-
-        manager
-            .drop_type(Type::drop().name(AttendeeType).to_owned())
             .await?;
 
         manager

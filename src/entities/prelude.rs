@@ -3,6 +3,7 @@
 pub use super::attendance::Entity as Attendance;
 pub use super::household::Entity as Household;
 pub use super::organization::Entity as Organization;
+pub use super::pairing_history::Entity as PairingHistory;
 pub use super::person::Entity as Person;
 pub use super::potluck::Entity as Potluck;
 pub use super::potluck_series::Entity as PotluckSeries;
