@@ -80,6 +80,7 @@ impl MigrationTrait for Migration {
                     .to(Organization::Table, Organization::Id)
                     .on_delete(ForeignKeyAction::Cascade),
             )
+            .check(Expr::col(PotluckSeries::EndDate).gt(Expr::col(PotluckSeries::StartDate)))
             .to_owned();
         manager.create_table(table).await?;
 
@@ -118,6 +119,14 @@ impl MigrationTrait for Migration {
                     .to(Household::Table, Household::Id)
                     .on_delete(ForeignKeyAction::SetNull),
             )
+            .check(
+                Expr::col(Potluck::HostPersonId)
+                    .is_not_null()
+                    .and(Expr::col(Potluck::HostHouseholdId).is_null())
+                    .or(Expr::col(Potluck::HostPersonId)
+                        .is_null()
+                        .and(Expr::col(Potluck::HostHouseholdId).is_not_null())),
+            )
             .to_owned();
         manager.create_table(table).await?;
 
@@ -155,6 +164,14 @@ impl MigrationTrait for Migration {
                     .from(Attendance::Table, Attendance::AttendeeHouseholdId)
                     .to(Household::Table, Household::Id)
                     .on_delete(ForeignKeyAction::Cascade),
+            )
+            .check(
+                Expr::col(Attendance::AttendeePersonId)
+                    .is_not_null()
+                    .and(Expr::col(Attendance::AttendeeHouseholdId).is_null())
+                    .or(Expr::col(Attendance::AttendeePersonId)
+                        .is_null()
+                        .and(Expr::col(Attendance::AttendeeHouseholdId).is_not_null())),
             )
             .to_owned();
         manager.create_table(table).await?;

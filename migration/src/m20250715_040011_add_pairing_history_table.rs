@@ -58,6 +58,22 @@ impl MigrationTrait for Migration {
                     .to(Household::Table, Household::Id)
                     .on_delete(ForeignKeyAction::Cascade),
             )
+            .check(
+                Expr::col(PairingHistory::EntityAPersonId)
+                    .is_not_null()
+                    .and(Expr::col(PairingHistory::EntityAHouseholdId).is_null())
+                    .or(Expr::col(PairingHistory::EntityAPersonId)
+                        .is_null()
+                        .and(Expr::col(PairingHistory::EntityAHouseholdId).is_not_null())),
+            )
+            .check(
+                Expr::col(PairingHistory::EntityBPersonId)
+                    .is_not_null()
+                    .and(Expr::col(PairingHistory::EntityBHouseholdId).is_null())
+                    .or(Expr::col(PairingHistory::EntityBPersonId)
+                        .is_null()
+                        .and(Expr::col(PairingHistory::EntityBHouseholdId).is_not_null())),
+            )
             .to_owned();
         manager.create_table(table).await?;
 
