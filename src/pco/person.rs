@@ -34,6 +34,7 @@ pub struct OrganizationInfo {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct PCOMeResponse {
     pub data: PCOResource,
     pub included: Vec<PCOResource>,
@@ -48,6 +49,7 @@ pub struct PCOPersonResponse {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct PCOResource {
     #[serde(rename = "type")]
     pub resource_type: String,
@@ -58,6 +60,7 @@ pub struct PCOResource {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct Meta {
     pub can_include: Vec<String>,
     pub parent: Parent,
@@ -66,6 +69,7 @@ pub struct Meta {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct Parent {
     pub id: String,
     #[serde(rename = "type")]

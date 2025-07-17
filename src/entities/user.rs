@@ -2,7 +2,7 @@
 
 use crate::OauthClient;
 use crate::entities::user::{
-    self, ActiveModel as UserActiveModel, Entity as UserEntity, Model as UserModel,
+    ActiveModel as UserActiveModel, Entity as UserEntity, Model as UserModel,
 };
 use chrono::Utc;
 use oauth2::TokenResponse;
@@ -58,6 +58,7 @@ impl Related<super::person::Entity> for Entity {
 
 impl ActiveModelBehavior for ActiveModel {}
 
+#[allow(dead_code)]
 pub async fn ensure_valid_access_token(
     user: &mut UserModel,
     db: &DatabaseConnection,

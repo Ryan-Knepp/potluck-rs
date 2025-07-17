@@ -7,7 +7,7 @@ use minijinja::context;
 use sea_orm::EntityTrait;
 use serde::Deserialize;
 
-use crate::{AppState, AuthSession, auth, entities, pco};
+use crate::{AppState, AuthSession};
 
 use crate::auth::user::ensure_valid_access_token;
 use crate::entities::user::Entity as UserEntity;
@@ -30,7 +30,7 @@ pub async fn search(State(state): State<AppState>, auth_session: AuthSession) ->
         _ => return StatusCode::UNAUTHORIZED.into_response(),
     };
     // Ensure access token is valid (refresh if needed)
-    if let Err(_) = ensure_valid_access_token(&mut user, &state.db, &state.client).await {
+    if ensure_valid_access_token(&mut user, &state.db, &state.client).await.is_err() {
         return StatusCode::UNAUTHORIZED.into_response();
     }
     let offset = 0;
@@ -70,7 +70,7 @@ pub async fn search_partial(
         Ok(Some(u)) => u,
         _ => return StatusCode::UNAUTHORIZED.into_response(),
     };
-    if let Err(_) = ensure_valid_access_token(&mut user, &state.db, &state.client).await {
+    if ensure_valid_access_token(&mut user, &state.db, &state.client).await.is_err() {
         return StatusCode::UNAUTHORIZED.into_response();
     }
     let offset = query.offset.unwrap_or(0);

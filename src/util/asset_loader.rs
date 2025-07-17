@@ -35,7 +35,7 @@ impl AssetLoader {
         }
     }
 
-    pub fn register<'a>(&self, env: &mut Environment<'a>) {
+    pub fn register(&self, env: &mut Environment<'_>) {
         let loader = self.clone();
         env.add_function("asset", move |_state: &State, path: String| -> Result<String, Error> {
             Ok(loader.asset_path(&path))

@@ -5,40 +5,35 @@ mod routes;
 mod util;
 
 use crate::{
-    entities::{organization, person},
     routes::dashboard::dashboard,
     routes::search::{search, search_partial},
     util::asset_loader::AssetLoader,
 };
-use auth::user::{AuthSession, Backend, ensure_valid_access_token};
+use auth::user::{AuthSession, Backend};
 use axum::{
-    Json, Router,
-    extract::{Query, State},
+    Router,
+    extract::State,
     response::{Html, IntoResponse, Redirect},
     routing::{get, get_service},
 };
 use axum_login::{
-    AuthManagerLayerBuilder, login_required,
+    AuthManagerLayerBuilder,
     tower_sessions::{
         ExpiredDeletion, Expiry, SessionManagerLayer,
         cookie::{SameSite, time},
     },
 };
-use entities::user::Entity as UserEntity;
 use migration::{Migrator, MigratorTrait};
 use minijinja::Environment;
 use oauth2::{
     AuthUrl, ClientId, ClientSecret, EndpointNotSet, EndpointSet, RedirectUrl, TokenUrl,
     basic::BasicClient,
 };
-use pco::person::{PeoplePage, get_people};
-use reqwest::StatusCode;
 use routes::api::api_pco;
 use routes::api::api_people;
 use routes::me::me;
-use sea_orm::{Database, DatabaseConnection, EntityTrait, sqlx::PgPool};
-use serde::Deserialize;
-use std::collections::HashMap;
+use sea_orm::{Database, DatabaseConnection, sqlx::PgPool};
+
 use std::env;
 use std::sync::Arc;
 use tokio::{net::TcpListener, signal, task::AbortHandle};
@@ -49,11 +44,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 pub type OauthClient =
     BasicClient<EndpointSet, EndpointNotSet, EndpointNotSet, EndpointNotSet, EndpointSet>;
 
-#[derive(Deserialize)]
-struct PeopleQuery {
-    offset: Option<usize>,
-    name: Option<String>,
-}
+
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

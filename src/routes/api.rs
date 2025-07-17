@@ -1,6 +1,6 @@
 use crate::auth::user::ensure_valid_access_token;
 use crate::entities::user::Entity as UserEntity;
-use crate::pco::person::{PeoplePage, get_people};
+use crate::pco::person::get_people;
 use crate::{AppState, AuthSession};
 use axum::{
     Json,
@@ -36,7 +36,7 @@ pub async fn api_people(
     };
 
     // Ensure access token is valid (refresh if needed)
-    if let Err(_) = ensure_valid_access_token(&mut user, &state.db, &state.client).await {
+    if ensure_valid_access_token(&mut user, &state.db, &state.client).await.is_err() {
         return StatusCode::UNAUTHORIZED.into_response();
     }
 
@@ -63,7 +63,7 @@ pub async fn api_pco(
         Ok(Some(u)) => u,
         _ => return StatusCode::UNAUTHORIZED.into_response(),
     };
-    if let Err(_) = ensure_valid_access_token(&mut user, &state.db, &state.client).await {
+    if ensure_valid_access_token(&mut user, &state.db, &state.client).await.is_err() {
         return StatusCode::UNAUTHORIZED.into_response();
     }
     let offset = query.offset.unwrap_or(0);

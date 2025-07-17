@@ -3,7 +3,7 @@ use axum::{
     response::{Html, IntoResponse},
 };
 use chrono::Utc;
-use sea_orm::{ColumnTrait, Condition, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 
 use crate::{
     AppState,
