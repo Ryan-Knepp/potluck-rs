@@ -2,11 +2,13 @@ mod auth;
 mod entities;
 mod pco;
 mod routes;
+mod util;
 
 use crate::{
     entities::{organization, person},
     routes::dashboard::dashboard,
     routes::search::{search, search_partial},
+    util::asset_loader::AssetLoader,
 };
 use auth::user::{AuthSession, Backend, ensure_valid_access_token};
 use axum::{
@@ -175,6 +177,8 @@ struct AppState {
 async fn setup_templates() -> Environment<'static> {
     let mut env = Environment::new();
     env.set_loader(minijinja::path_loader("templates"));
+    let asset_loader = AssetLoader::new();
+    asset_loader.register(&mut env);
     env
 }
 

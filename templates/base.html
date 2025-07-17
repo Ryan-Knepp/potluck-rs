@@ -21,8 +21,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>{% block title %}Potluck{% endblock %}</title>
-    <link rel="stylesheet" href="/static/css/style.css" />
-    <script src="/static/js/htmx.min.js"></script>
+    <link rel="stylesheet" href="{{ asset('css/style.css') }}" />
+    <script src="{{ asset('js/htmx.min.js') }}"></script>
     <link
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/basecoat-css@0.2.5/dist/basecoat.cdn.min.css"
@@ -34,6 +34,6 @@
   </head>
   <body class="bg-slate-100 dark:bg-slate-900 min-h-screen">
     {% block content %}{% endblock %}
-    <script src="/static/js/theme.js"></script>
+    <script src="{{ asset('js/theme.js') }}"></script>
   </body>
 </html>
