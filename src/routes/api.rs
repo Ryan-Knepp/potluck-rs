@@ -1,7 +1,7 @@
 use crate::auth::user::ensure_valid_access_token;
 use crate::entities::user::Entity as UserEntity;
 use crate::pco::person::get_people;
-use crate::{AppState, AuthSession};
+use crate::{router::AppState, auth::user::AuthSession};
 use axum::{
     Json,
     extract::{Query, State},

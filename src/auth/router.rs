@@ -9,7 +9,7 @@ use axum_login::tower_sessions::Session;
 use oauth2::CsrfToken;
 use serde::Deserialize;
 
-use crate::AppState;
+use crate::router::AppState;
 
 use super::user::{AuthSession, Credentials};
 
@@ -64,7 +64,7 @@ mod post {
 mod get {
     use axum::extract::State;
 
-    use crate::AppState;
+    use crate::router::AppState;
 
     use super::*;
 

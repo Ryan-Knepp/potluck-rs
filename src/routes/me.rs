@@ -1,5 +1,5 @@
 use crate::entities::{organization, person};
-use crate::{AppState, AuthSession};
+use crate::{router::AppState, auth::user::AuthSession};
 use axum::{
     extract::State,
     response::{Html, IntoResponse},

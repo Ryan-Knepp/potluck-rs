@@ -7,7 +7,7 @@ use minijinja::context;
 use sea_orm::EntityTrait;
 use serde::Deserialize;
 
-use crate::{AppState, AuthSession};
+use crate::{router::AppState, auth::user::AuthSession};
 
 use crate::auth::user::ensure_valid_access_token;
 use crate::entities::user::Entity as UserEntity;

@@ -5,10 +5,7 @@ use axum::{
 use chrono::Utc;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 
-use crate::{
-    AppState,
-    entities::potluck_series::{self, Entity as PotluckSeries},
-};
+use crate::{router::AppState, entities::potluck_series::{self, Entity as PotluckSeries}};
 
 pub async fn dashboard(State(state): State<AppState>) -> impl IntoResponse {
     let now = Utc::now().naive_utc();
