@@ -41,7 +41,7 @@
 </tr>
 {% endfor %} {% if has_more %}
 <tr
-  hx-get="/people/partial?offset={{ next_offset }}&name={{ name|urlencode }}"
+  hx-get="/search/partial?offset={{ next_offset }}&name={{ name|urlencode }}"
   hx-trigger="revealed"
   hx-swap="outerHTML"
 >

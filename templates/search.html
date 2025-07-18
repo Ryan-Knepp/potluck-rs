@@ -9,7 +9,7 @@ include "_navbar.html" %}
         name="name"
         placeholder="Search people..."
         class="input w-full dark:bg-slate-800 dark:text-slate-100"
-        hx-get="/people/partial"
+        hx-get="/search/partial"
         hx-trigger="keyup changed delay:300ms"
         hx-target="#people-table-body"
         hx-include="[name='name']"
