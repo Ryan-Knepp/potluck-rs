@@ -138,9 +138,9 @@ pub async fn sign_up_household(
 
     let organization_id = user.organization_id;
 
-    let household_response = match get_household_people(&user.access_token, &household_id).await {
-        Ok(household_response) => household_response,
-        Err(_) => {
+    let household_info = match get_household_people(&user.access_token, &household_id).await {
+        Ok(Some(household_info)) => household_info,
+        _ => {
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "Failed to get household data from PCO",
@@ -148,28 +148,6 @@ pub async fn sign_up_household(
                 .into_response();
         }
     };
-
-    let included_resources = household_response.included.clone();
-
-    let household_data = included_resources
-        .clone()
-        .into_iter()
-        .find(|resource| resource.resource_type == "Household" && resource.id == household_id);
-
-    let household_data = match household_data {
-        Some(data) => data,
-        None => {
-            return (StatusCode::NOT_FOUND, "Household not found in PCO response").into_response();
-        }
-    };
-
-    let household_name = household_data.attributes["name"]
-        .as_str()
-        .unwrap_or("")
-        .to_string();
-    let household_avatar_url = household_data.attributes["avatar"]
-        .as_str()
-        .map(|s| s.to_string());
 
     let txn = match state.db.begin().await {
         Ok(txn) => txn,
@@ -189,8 +167,8 @@ pub async fn sign_up_household(
     {
         Ok(Some(existing)) => {
             let mut active_model: household::ActiveModel = existing.into();
-            active_model.name = Set(household_name);
-            active_model.avatar_url = Set(household_avatar_url);
+            active_model.name = Set(household_info.name.clone());
+            active_model.avatar_url = Set(household_info.avatar.clone());
             active_model.is_signed_up = Set(true);
             match active_model.update(&txn).await {
                 Ok(model) => model,
@@ -208,8 +186,8 @@ pub async fn sign_up_household(
             let new_household = household::ActiveModel {
                 pco_id: Set(household_id.clone()),
                 organization_id: Set(organization_id),
-                name: Set(household_name),
-                avatar_url: Set(household_avatar_url),
+                name: Set(household_info.name.clone()),
+                avatar_url: Set(household_info.avatar.clone()),
                 is_signed_up: Set(true),
                 can_host: Set(false),
                 ..Default::default()
@@ -236,127 +214,64 @@ pub async fn sign_up_household(
         }
     };
 
-    for pco_person in household_response.data {
-        let person_name = pco_person.attributes["name"]
-            .as_str()
-            .unwrap_or("")
-            .to_string();
-        let person_avatar_url = pco_person.attributes["avatar"]
-            .as_str()
-            .map(|s| s.to_string());
-        let person_email = pco_person.relationships.as_ref().and_then(|rels| {
-            rels.get("emails")
-                .and_then(|emails_val| emails_val.get("data"))
-                .and_then(|data_val| data_val.as_array())
-                .and_then(|data_arr| data_arr.first())
-                .and_then(|first_item| first_item.get("id"))
-                .and_then(|id_val| id_val.as_str())
-                .and_then(|email_id| {
-                    included_resources
-                        .iter()
-                        .find(|resource| {
-                            resource.resource_type == "Email" && resource.id == email_id
-                        })
-                        .and_then(|email_resource| {
-                            email_resource.attributes["address"]
-                                .as_str()
-                                .map(|s| s.to_string())
-                        })
-                })
-        });
-        let person_phone = pco_person.relationships.as_ref().and_then(|rels| {
-            rels.get("phone_numbers")
-                .and_then(|phones_val| phones_val.get("data"))
-                .and_then(|data_val| data_val.as_array())
-                .and_then(|data_arr| data_arr.first())
-                .and_then(|first_item| first_item.get("id"))
-                .and_then(|id_val| id_val.as_str())
-                .and_then(|phone_id| {
-                    included_resources
-                        .iter()
-                        .find(|resource| {
-                            resource.resource_type == "PhoneNumber" && resource.id == phone_id
-                        })
-                        .and_then(|phone_resource| {
-                            phone_resource.attributes["number"]
-                                .as_str()
-                                .map(|s| s.to_string())
-                        })
-                })
-        });
-        let person_address = pco_person.relationships.as_ref().and_then(|rels| {
-            rels.get("addresses")
-                .and_then(|addresses_val| addresses_val.get("data"))
-                .and_then(|data_val| data_val.as_array())
-                .and_then(|data_arr| data_arr.first())
-                .and_then(|first_item| first_item.get("id"))
-                .and_then(|id_val| id_val.as_str())
-                .and_then(|address_id| {
-                    included_resources
-                        .iter()
-                        .find(|resource| {
-                            resource.resource_type == "Address" && resource.id == address_id
-                        })
-                        .map(|address_resource| address_resource.attributes.clone())
-                })
-        });
-        let is_child = pco_person.attributes["child"].as_bool().unwrap_or(false);
-
-        let existing_person = match person::Entity::find()
-            .filter(person::Column::PcoId.eq(pco_person.id.clone()))
-            .one(&txn)
-            .await
-        {
-            Ok(person) => person,
-            Err(_) => {
-                let _ = txn.rollback().await;
-                return (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "Failed to query person",
-                )
-                    .into_response();
-            }
-        };
-
-        if let Some(existing) = existing_person {
-            let mut active_model: person::ActiveModel = existing.into();
-            active_model.name = Set(person_name);
-            active_model.email = Set(person_email);
-            active_model.phone = Set(person_phone);
-            active_model.address = Set(person_address.unwrap_or_default());
-            active_model.avatar_url = Set(person_avatar_url);
-            active_model.is_child = Set(is_child);
-            active_model.household_id = Set(Some(household_model.id));
-            if active_model.update(&txn).await.is_err() {
-                let _ = txn.rollback().await;
-                return (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "Failed to update person",
-                )
-                    .into_response();
-            }
-        } else {
-            let new_person = person::ActiveModel {
-                pco_id: Set(pco_person.id),
-                organization_id: Set(organization_id),
-                name: Set(person_name),
-                email: Set(person_email),
-                phone: Set(person_phone),
-                address: Set(person_address.unwrap_or_default()),
-                avatar_url: Set(person_avatar_url),
-                is_signed_up: Set(false),
-                can_host: Set(false),
-                is_child: Set(is_child),
-                household_id: Set(Some(household_model.id)),
-                ..Default::default()
+    if let Some(people) = household_info.people {
+        for pco_person in people {
+            let existing_person = match person::Entity::find()
+                .filter(person::Column::PcoId.eq(pco_person.id.clone()))
+                .one(&txn)
+                .await
+            {
+                Ok(person) => person,
+                Err(_) => {
+                    let _ = txn.rollback().await;
+                    return (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "Failed to query person",
+                    )
+                        .into_response();
+                }
             };
-            if new_person.insert(&txn).await.is_err() {
-                let _ = txn.rollback().await;
-                return (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "Failed to insert person",
-                )
-                    .into_response();
+
+            if let Some(existing) = existing_person {
+                let mut active_model: person::ActiveModel = existing.into();
+                active_model.name = Set(pco_person.name.clone());
+                active_model.email = Set(pco_person.email.clone());
+                active_model.phone = Set(pco_person.phone.clone());
+                active_model.address = Set(pco_person.address.clone().unwrap_or_default());
+                active_model.avatar_url = Set(pco_person.avatar.clone());
+                active_model.is_child = Set(pco_person.is_child);
+                active_model.household_id = Set(Some(household_model.id));
+                if active_model.update(&txn).await.is_err() {
+                    let _ = txn.rollback().await;
+                    return (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "Failed to update person",
+                    )
+                        .into_response();
+                }
+            } else {
+                let new_person = person::ActiveModel {
+                    pco_id: Set(pco_person.id.clone()),
+                    organization_id: Set(organization_id),
+                    name: Set(pco_person.name.clone()),
+                    email: Set(pco_person.email.clone()),
+                    phone: Set(pco_person.phone.clone()),
+                    address: Set(pco_person.address.clone().unwrap_or_default()),
+                    avatar_url: Set(pco_person.avatar.clone()),
+                    is_signed_up: Set(false),
+                    can_host: Set(false),
+                    is_child: Set(pco_person.is_child),
+                    household_id: Set(Some(household_model.id)),
+                    ..Default::default()
+                };
+                if new_person.insert(&txn).await.is_err() {
+                    let _ = txn.rollback().await;
+                    return (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "Failed to insert person",
+                    )
+                        .into_response();
+                }
             }
         }
     }

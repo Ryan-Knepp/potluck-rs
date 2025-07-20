@@ -4,8 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 
-const BASE_URL: &str = "https://api.planningcenteronline.com/people/v2/";
-const INCLUDED: &str = "include=addresses,emails,households,organization,phone_numbers";
+use super::{process_included, PCOPersonResponse, PCOResource, INCLUDED, BASE_URL};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PersonData {
@@ -15,6 +14,7 @@ pub struct PersonData {
     pub email: Option<String>,
     pub address: Option<Value>, // Store full address JSON
     pub phone: Option<String>,
+    pub is_child: bool,
     pub household: Option<HouseholdInfo>,
     pub organization: Option<OrganizationInfo>,
 }
@@ -24,6 +24,9 @@ pub struct HouseholdInfo {
     pub id: String,
     pub name: String,
     pub avatar: Option<String>,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub people: Option<Vec<PersonData>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -38,42 +41,6 @@ pub struct OrganizationInfo {
 pub struct PCOMeResponse {
     pub data: PCOResource,
     pub included: Vec<PCOResource>,
-    pub meta: Meta,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct PCOPersonResponse {
-    pub data: Vec<PCOResource>,
-    pub included: Vec<PCOResource>,
-    pub meta: Meta,
-}
-
-#[derive(Debug, Deserialize, Clone, Serialize)]
-#[allow(dead_code)]
-pub struct PCOResource {
-    #[serde(rename = "type")]
-    pub resource_type: String,
-    pub id: String,
-    pub attributes: serde_json::Value,
-    pub relationships: Option<serde_json::Value>,
-    pub links: Option<serde_json::Value>,
-}
-
-#[derive(Debug, Deserialize)]
-#[allow(dead_code)]
-pub struct Meta {
-    pub can_include: Vec<String>,
-    pub parent: Parent,
-    pub total_count: Option<usize>,
-    pub count: Option<usize>,
-}
-
-#[derive(Debug, Deserialize)]
-#[allow(dead_code)]
-pub struct Parent {
-    pub id: String,
-    #[serde(rename = "type")]
-    pub resource_type: String,
 }
 
 #[derive(Serialize, Debug)]
@@ -97,58 +64,7 @@ pub async fn get_user_info(access_token: &String) -> Result<Option<PersonData>, 
 }
 
 fn parse_complete_response(response: PCOMeResponse) -> Option<PersonData> {
-    // Create maps to store included data
-    let mut addresses: HashMap<String, Value> = HashMap::new();
-    let mut emails: HashMap<String, String> = HashMap::new();
-    let mut phones: HashMap<String, String> = HashMap::new();
-    let mut organizations: HashMap<String, OrganizationInfo> = HashMap::new();
-    let mut households: HashMap<String, HouseholdInfo> = HashMap::new();
-
-    // Process included items
-    for item in response.included {
-        let item_type = item.resource_type;
-        let item_id = item.id;
-
-        match item_type {
-            val if val == "Address" => {
-                // Store the full attributes JSON object
-                addresses.insert(item_id, item.attributes);
-            }
-            val if val == "Email" => {
-                if let Some(address) = item.attributes["address"].as_str() {
-                    emails.insert(item_id, address.to_string());
-                }
-            }
-            val if val == "PhoneNumber" => {
-                if let Some(number) = item.attributes["number"].as_str() {
-                    phones.insert(item_id, number.to_string());
-                }
-            }
-            val if val == "Organization" => {
-                organizations.insert(
-                    item_id.clone(),
-                    OrganizationInfo {
-                        id: item_id,
-                        name: item.attributes["name"].as_str().unwrap_or("").to_string(),
-                        avatar_url: item.attributes["avatar_url"]
-                            .as_str()
-                            .map(|s| s.to_string()),
-                    },
-                );
-            }
-            val if val == "Household" => {
-                households.insert(
-                    item_id.clone(),
-                    HouseholdInfo {
-                        id: item_id,
-                        name: item.attributes["name"].as_str().unwrap_or("").to_string(),
-                        avatar: item.attributes["avatar"].as_str().map(|s| s.to_string()),
-                    },
-                );
-            }
-            _ => {}
-        }
-    }
+    let (addresses, emails, phones, organizations, households) = process_included(response.included);
 
     parse_person_resource(
         response.data,
@@ -160,7 +76,7 @@ fn parse_complete_response(response: PCOMeResponse) -> Option<PersonData> {
     )
 }
 
-fn parse_person_resource(
+pub fn parse_person_resource(
     person: PCOResource,
     organizations: HashMap<String, OrganizationInfo>,
     addresses: HashMap<String, Value>,
@@ -175,6 +91,8 @@ fn parse_person_resource(
     // Extract name and avatar directly
     let name = attributes["name"].as_str().unwrap_or("").to_string();
     let avatar = attributes["avatar"].as_str().map(|s| s.to_string());
+
+    let is_child = attributes["child"].as_bool().unwrap_or(false);
 
     // Find address, email, phone, etc.
     let mut person_address = None;
@@ -241,6 +159,7 @@ fn parse_person_resource(
         email: person_email,
         address: person_address,
         phone: person_phone,
+        is_child,
         organization: person_organization,
         household: person_household,
     })
@@ -271,56 +190,7 @@ pub async fn get_people(
         .json::<PCOPersonResponse>()
         .await?;
 
-    // Build lookup maps from included
-    let mut addresses: HashMap<String, Value> = HashMap::new();
-    let mut emails: HashMap<String, String> = HashMap::new();
-    let mut phones: HashMap<String, String> = HashMap::new();
-    let mut organizations: HashMap<String, OrganizationInfo> = HashMap::new();
-    let mut households: HashMap<String, HouseholdInfo> = HashMap::new();
-
-    for item in response.included {
-        let item_type = item.resource_type;
-        let item_id = item.id;
-
-        match item_type.as_str() {
-            "Address" => {
-                addresses.insert(item_id, item.attributes);
-            }
-            "Email" => {
-                if let Some(address) = item.attributes["address"].as_str() {
-                    emails.insert(item_id, address.to_string());
-                }
-            }
-            "PhoneNumber" => {
-                if let Some(number) = item.attributes["number"].as_str() {
-                    phones.insert(item_id, number.to_string());
-                }
-            }
-            "Organization" => {
-                organizations.insert(
-                    item_id.clone(),
-                    OrganizationInfo {
-                        id: item_id,
-                        name: item.attributes["name"].as_str().unwrap_or("").to_string(),
-                        avatar_url: item.attributes["avatar_url"]
-                            .as_str()
-                            .map(|s| s.to_string()),
-                    },
-                );
-            }
-            "Household" => {
-                households.insert(
-                    item_id.clone(),
-                    HouseholdInfo {
-                        id: item_id,
-                        name: item.attributes["name"].as_str().unwrap_or("").to_string(),
-                        avatar: item.attributes["avatar"].as_str().map(|s| s.to_string()),
-                    },
-                );
-            }
-            _ => {}
-        }
-    }
+    let (addresses, emails, phones, organizations, households) = process_included(response.included);
 
     // Parse each person in the response
     let mut people = Vec::new();
