@@ -15,10 +15,10 @@ use serde::{Deserialize, Serialize};
 pub struct Model {
     pub created_at: DateTime,
     pub updated_at: DateTime,
-    #[sea_orm(primary_key, auto_increment = false)]
-    pub id: Uuid,
-    pub person_id: Uuid,
-    pub organization_id: Uuid,
+    #[sea_orm(primary_key, auto_increment = true)]
+    pub id: i32,
+    pub person_id: i32,
+    pub organization_id: i32,
     pub access_token: String,
     pub refresh_token: Option<String>,
     pub token_expires_at: DateTime,

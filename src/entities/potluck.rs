@@ -9,11 +9,12 @@ pub struct Model {
     pub created_at: DateTime,
     pub updated_at: DateTime,
     #[sea_orm(primary_key, auto_increment = false)]
-    pub id: Uuid,
-    pub organization_id: Uuid,
-    pub potluck_series_id: Uuid,
-    pub host_person_id: Option<Uuid>,
-    pub host_household_id: Option<Uuid>,
+    #[sea_orm(primary_key, auto_increment = true)]
+    pub id: i32,
+    pub organization_id: i32,
+    pub potluck_series_id: i32,
+    pub host_person_id: Option<i32>,
+    pub host_household_id: Option<i32>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

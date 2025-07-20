@@ -8,11 +8,11 @@ use serde::{Deserialize, Serialize};
 pub struct Model {
     pub created_at: DateTime,
     pub updated_at: DateTime,
-    #[sea_orm(primary_key, auto_increment = false)]
-    pub id: Uuid,
+    #[sea_orm(primary_key, auto_increment = true)]
+    pub id: i32,
     #[sea_orm(unique)]
     pub pco_id: String,
-    pub organization_id: Uuid,
+    pub organization_id: i32,
     pub name: String,
     pub is_signed_up: bool,
     pub can_host: bool,

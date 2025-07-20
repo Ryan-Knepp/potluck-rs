@@ -9,13 +9,13 @@ pub struct Migration;
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         let table = table_auto(PairingHistory::Table)
-            .col(pk_uuid(PairingHistory::Id))
-            .col(uuid(PairingHistory::PotluckId))
-            .col(uuid(PairingHistory::OrganizationId))
-            .col(uuid_null(PairingHistory::EntityAPersonId))
-            .col(uuid_null(PairingHistory::EntityAHouseholdId))
-            .col(uuid_null(PairingHistory::EntityBPersonId))
-            .col(uuid_null(PairingHistory::EntityBHouseholdId))
+            .col(pk_auto(PairingHistory::Id))
+            .col(integer(PairingHistory::PotluckId))
+            .col(integer(PairingHistory::OrganizationId))
+            .col(integer_null(PairingHistory::EntityAPersonId))
+            .col(integer_null(PairingHistory::EntityAHouseholdId))
+            .col(integer_null(PairingHistory::EntityBPersonId))
+            .col(integer_null(PairingHistory::EntityBHouseholdId))
             .foreign_key(
                 ForeignKey::create()
                     .name("fk_pairing_potluck")

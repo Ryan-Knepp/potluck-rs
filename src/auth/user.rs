@@ -14,13 +14,13 @@ use sea_orm::{DatabaseConnection, EntityTrait, Set};
 use serde::Deserialize;
 use tokio::spawn;
 use tracing::debug;
-use uuid::Uuid;
+
 
 use crate::entities::{household, organization, person, prelude::*, user};
 use crate::pco::person::get_user_info;
 
 impl AuthUser for user::Model {
-    type Id = Uuid;
+    type Id = i32;
 
     fn id(&self) -> Self::Id {
         self.id
@@ -146,7 +146,6 @@ impl AuthnBackend for Backend {
             None => {
                 // Create new org
                 let org_model = organization::ActiveModel {
-                    id: Set(Uuid::new_v4()),
                     pco_id: Set(org.id),
                     name: Set(org.name),
                     avatar_url: Set(org.avatar_url),
@@ -183,7 +182,7 @@ impl AuthnBackend for Backend {
                 // Create new person
                 is_new_person = true;
                 person::ActiveModel {
-                    id: Set(Uuid::new_v4()),
+                    id: NotSet,
                     organization_id: Set(organization.id),
                     pco_id: Set(user_data.id),
                     name: Set(user_data.name),
@@ -222,7 +221,6 @@ impl AuthnBackend for Backend {
                     None => {
                         // Create new household
                         let household_model = household::ActiveModel {
-                            id: Set(Uuid::new_v4()),
                             organization_id: Set(organization.id),
                             pco_id: Set(household.id),
                             name: Set(household.name),
@@ -272,7 +270,6 @@ impl AuthnBackend for Backend {
             }
             None => {
                 let user_model = user::ActiveModel {
-                    id: Set(Uuid::new_v4()),
                     person_id: Set(person.id),
                     organization_id: Set(organization.id),
                     access_token: Set(access_token.clone()),

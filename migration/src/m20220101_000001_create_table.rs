@@ -10,7 +10,7 @@ impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         // Create Organization Table
         let table = table_auto(Organization::Table)
-            .col(pk_uuid(Organization::Id))
+            .col(pk_auto(Organization::Id))
             .col(string_uniq(Organization::PcoId))
             .col(string(Organization::Name))
             .col(string_null(Organization::AvatarUrl))
@@ -19,9 +19,9 @@ impl MigrationTrait for Migration {
 
         // Create Person Table
         let table = table_auto(Person::Table)
-            .col(pk_uuid(Person::Id))
+            .col(pk_auto(Person::Id))
             .col(string_uniq(Person::PcoId))
-            .col(uuid(Person::OrganizationId))
+            .col(integer(Person::OrganizationId))
             .col(string(Person::Name))
             .col(string_null(Person::Email))
             .col(string_null(Person::Phone))
@@ -30,15 +30,15 @@ impl MigrationTrait for Migration {
             .col(boolean(Person::IsSignedUp).default(false))
             .col(boolean(Person::CanHost).default(false))
             .col(boolean(Person::IsChild).default(false))
-            .col(uuid_null(Person::HouseholdId))
+            .col(integer_null(Person::HouseholdId))
             .to_owned();
         manager.create_table(table).await?;
 
         // Create Household Table
         let table = table_auto(Household::Table)
-            .col(pk_uuid(Household::Id))
+            .col(pk_auto(Household::Id))
             .col(string_uniq(Household::PcoId))
-            .col(uuid(Household::OrganizationId))
+            .col(integer(Household::OrganizationId))
             .col(string(Household::Name))
             .col(boolean(Household::IsSignedUp).default(false))
             .col(boolean(Household::CanHost).default(false))
@@ -67,8 +67,8 @@ impl MigrationTrait for Migration {
 
         // Create PotluckSeries Table
         let table = table_auto(PotluckSeries::Table)
-            .col(pk_uuid(PotluckSeries::Id))
-            .col(uuid(PotluckSeries::OrganizationId))
+            .col(pk_auto(PotluckSeries::Id))
+            .col(integer(PotluckSeries::OrganizationId))
             .col(string(PotluckSeries::Name))
             .col(date(PotluckSeries::StartDate))
             .col(date(PotluckSeries::EndDate))
@@ -86,11 +86,11 @@ impl MigrationTrait for Migration {
 
         // Create Potluck Table
         let table = table_auto(Potluck::Table)
-            .col(pk_uuid(Potluck::Id))
-            .col(uuid(Potluck::OrganizationId))
-            .col(uuid(Potluck::PotluckSeriesId))
-            .col(uuid_null(Potluck::HostPersonId))
-            .col(uuid_null(Potluck::HostHouseholdId))
+            .col(pk_auto(Potluck::Id))
+            .col(integer(Potluck::OrganizationId))
+            .col(integer(Potluck::PotluckSeriesId))
+            .col(integer_null(Potluck::HostPersonId))
+            .col(integer_null(Potluck::HostHouseholdId))
             .foreign_key(
                 ForeignKey::create()
                     .name("fk_potluck_organization")
@@ -132,11 +132,11 @@ impl MigrationTrait for Migration {
 
         // Create Attendance Table
         let table = table_auto(Attendance::Table)
-            .col(pk_uuid(Attendance::Id))
-            .col(uuid(Attendance::PotluckId))
-            .col(uuid(Attendance::OrganizationId))
-            .col(uuid_null(Attendance::AttendeePersonId))
-            .col(uuid_null(Attendance::AttendeeHouseholdId))
+            .col(pk_auto(Attendance::Id))
+            .col(integer(Attendance::PotluckId))
+            .col(integer(Attendance::OrganizationId))
+            .col(integer_null(Attendance::AttendeePersonId))
+            .col(integer_null(Attendance::AttendeeHouseholdId))
             .foreign_key(
                 ForeignKey::create()
                     .name("fk_attendance_potluck")

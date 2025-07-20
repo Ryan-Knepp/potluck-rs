@@ -9,9 +9,9 @@ pub struct Migration;
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         let table = table_auto(User::Table)
-            .col(pk_uuid(User::Id))
-            .col(uuid(User::PersonId))
-            .col(uuid(User::OrganizationId))
+            .col(pk_auto(User::Id))
+            .col(integer(User::PersonId))
+            .col(integer(User::OrganizationId))
             .col(string(User::AccessToken))
             .col(string_null(User::RefreshToken))
             .col(timestamp(User::TokenExpiresAt))
