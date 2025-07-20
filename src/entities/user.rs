@@ -57,34 +57,3 @@ impl Related<super::person::Entity> for Entity {
 }
 
 impl ActiveModelBehavior for ActiveModel {}
-
-#[allow(dead_code)]
-pub async fn ensure_valid_access_token(
-    user: &mut UserModel,
-    db: &DatabaseConnection,
-    oauth_client: &OauthClient,
-) -> Result<(), anyhow::Error> {
-    if user.token_expires_at < Utc::now().naive_utc() {
-        let refresh_token = user
-            .refresh_token
-            .clone()
-            .ok_or_else(|| anyhow::anyhow!("No refresh token"))?;
-        let token_result = oauth_client
-            .exchange_refresh_token(&oauth2::RefreshToken::new(refresh_token))
-            .request_async(&reqwest::Client::new())
-            .await?;
-
-        user.access_token = token_result.access_token().secret().to_string();
-        user.refresh_token = token_result.refresh_token().map(|t| t.secret().to_string());
-        user.token_expires_at = Utc::now().naive_utc()
-            + chrono::Duration::from_std(token_result.expires_in().unwrap()).unwrap();
-
-        // Save updated user to DB
-        let mut active_model: UserActiveModel = user.clone().into();
-        active_model.access_token = Set(user.access_token.clone());
-        active_model.refresh_token = Set(user.refresh_token.clone());
-        active_model.token_expires_at = Set(user.token_expires_at);
-        UserEntity::update(active_model).exec(db).await?;
-    }
-    Ok(())
-}
