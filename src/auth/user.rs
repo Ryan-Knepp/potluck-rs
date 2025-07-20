@@ -15,7 +15,6 @@ use serde::Deserialize;
 use tokio::spawn;
 use tracing::debug;
 
-
 use crate::entities::{household, organization, person, prelude::*, user};
 use crate::pco::person::get_user_info;
 
@@ -213,6 +212,7 @@ impl AuthnBackend for Backend {
                         // Update existing household
                         let mut household_model: household::ActiveModel = existing.into();
                         household_model.name = Set(household.name);
+                        household_model.avatar_url = Set(household.avatar);
                         household_model
                             .update(&self.db)
                             .await
@@ -224,6 +224,7 @@ impl AuthnBackend for Backend {
                             organization_id: Set(organization.id),
                             pco_id: Set(household.id),
                             name: Set(household.name),
+                            avatar_url: Set(household.avatar),
                             ..Default::default()
                         };
                         debug!("Creating new household: {:?}", household_model);
