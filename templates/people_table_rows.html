@@ -32,6 +32,7 @@
       {% if person.household %}
       <button
         class="btn btn-primary bg-purple-600 hover:bg-purple-700 text-purple-50 dark:bg-purple-700 dark:hover:bg-purple-800 dark:text-purple-100"
+        hx-post="/search/sign-up-household/{{ person.household.id }}"
       >
         Sign Up Family
       </button>

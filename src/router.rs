@@ -7,7 +7,7 @@ use crate::{
         api::{api_pco, api_people},
         dashboard::dashboard,
         me::me,
-        search::{search, search_partial},
+        search::{search, search_partial, sign_up_household},
     },
     util::asset_loader::AssetLoader,
 };
@@ -15,7 +15,7 @@ use axum::{
     Router,
     extract::State,
     response::{Html, IntoResponse, Redirect},
-    routing::{get, get_service},
+    routing::{get, get_service, post},
 };
 use axum_login::{
     AuthManagerLayerBuilder,
@@ -72,6 +72,10 @@ pub async fn create_router(
         .route("/me", get(me))
         .route("/search", get(search))
         .route("/search/partial", get(search_partial))
+        .route(
+            "/search/sign-up-household/{household_id}",
+            post(sign_up_household),
+        )
         .route("/api/people", get(api_people))
         .route("/api/pco", get(api_pco))
         .route("/", get(index))

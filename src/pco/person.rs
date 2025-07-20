@@ -48,7 +48,7 @@ pub struct PCOPersonResponse {
     pub meta: Meta,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone, Serialize)]
 #[allow(dead_code)]
 pub struct PCOResource {
     #[serde(rename = "type")]

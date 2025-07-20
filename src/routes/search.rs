@@ -1,17 +1,22 @@
 use axum::{
-    extract::{Query, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::{Html, IntoResponse},
 };
 use minijinja::context;
-use sea_orm::EntityTrait;
+use sea_orm::{
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter,
+    TransactionTrait,
+};
 use serde::Deserialize;
 
-use crate::{router::AppState, auth::user::AuthSession};
+use crate::{auth::user::AuthSession, router::AppState};
 
 use crate::auth::user::ensure_valid_access_token;
 use crate::entities::user::Entity as UserEntity;
-use crate::pco::person::{PeoplePage, get_people};
+use crate::entities::{household, person};
+use crate::pco::household::get_household_people;
+use crate::pco::person::{get_people, PeoplePage};
 
 #[derive(Deserialize)]
 pub struct PeopleQuery {
@@ -22,16 +27,19 @@ pub struct PeopleQuery {
 pub async fn search(State(state): State<AppState>, auth_session: AuthSession) -> impl IntoResponse {
     let user_id = match auth_session.user {
         Some(u) => u.id,
-        None => return StatusCode::UNAUTHORIZED.into_response(),
+        None => return (StatusCode::UNAUTHORIZED, "No user session").into_response(),
     };
     // Fetch user from DB
     let mut user = match UserEntity::find_by_id(user_id).one(&state.db).await {
         Ok(Some(u)) => u,
-        _ => return StatusCode::UNAUTHORIZED.into_response(),
+        _ => return (StatusCode::UNAUTHORIZED, "User not found").into_response(),
     };
     // Ensure access token is valid (refresh if needed)
-    if ensure_valid_access_token(&mut user, &state.db, &state.client).await.is_err() {
-        return StatusCode::UNAUTHORIZED.into_response();
+    if ensure_valid_access_token(&mut user, &state.db, &state.client)
+        .await
+        .is_err()
+    {
+        return (StatusCode::UNAUTHORIZED, "Invalid token").into_response();
     }
     let offset = 0;
     let per_page = 25;
@@ -64,14 +72,17 @@ pub async fn search_partial(
 ) -> impl IntoResponse {
     let user_id = match auth_session.user {
         Some(u) => u.id,
-        None => return StatusCode::UNAUTHORIZED.into_response(),
+        None => return (StatusCode::UNAUTHORIZED, "No user session").into_response(),
     };
     let mut user = match UserEntity::find_by_id(user_id).one(&state.db).await {
         Ok(Some(u)) => u,
-        _ => return StatusCode::UNAUTHORIZED.into_response(),
+        _ => return (StatusCode::UNAUTHORIZED, "User not found").into_response(),
     };
-    if ensure_valid_access_token(&mut user, &state.db, &state.client).await.is_err() {
-        return StatusCode::UNAUTHORIZED.into_response();
+    if ensure_valid_access_token(&mut user, &state.db, &state.client)
+        .await
+        .is_err()
+    {
+        return (StatusCode::UNAUTHORIZED, "Invalid token").into_response();
     }
     let offset = query.offset.unwrap_or(0);
     let per_page = 25;
@@ -103,4 +114,259 @@ pub async fn search_partial(
         })
         .unwrap();
     Html(html).into_response()
+}
+
+pub async fn sign_up_household(
+    State(state): State<AppState>,
+    auth_session: AuthSession,
+    Path(household_id): Path<String>,
+) -> impl IntoResponse {
+    let user_id = match auth_session.user {
+        Some(u) => u.id,
+        None => return (StatusCode::UNAUTHORIZED, "No user session").into_response(),
+    };
+    let mut user = match UserEntity::find_by_id(user_id).one(&state.db).await {
+        Ok(Some(u)) => u,
+        _ => return (StatusCode::UNAUTHORIZED, "User not found").into_response(),
+    };
+    if ensure_valid_access_token(&mut user, &state.db, &state.client)
+        .await
+        .is_err()
+    {
+        return (StatusCode::UNAUTHORIZED, "Invalid token").into_response();
+    }
+
+    let organization_id = user.organization_id;
+
+    let household_response = match get_household_people(&user.access_token, &household_id).await {
+        Ok(household_response) => household_response,
+        Err(_) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to get household data from PCO",
+            )
+                .into_response();
+        }
+    };
+
+    let included_resources = household_response.included.clone();
+
+    let household_data = included_resources
+        .clone()
+        .into_iter()
+        .find(|resource| resource.resource_type == "Household" && resource.id == household_id);
+
+    let household_data = match household_data {
+        Some(data) => data,
+        None => {
+            return (StatusCode::NOT_FOUND, "Household not found in PCO response").into_response();
+        }
+    };
+
+    let household_name = household_data.attributes["name"]
+        .as_str()
+        .unwrap_or("")
+        .to_string();
+    let household_avatar_url = household_data.attributes["avatar"]
+        .as_str()
+        .map(|s| s.to_string());
+
+    let txn = match state.db.begin().await {
+        Ok(txn) => txn,
+        Err(_) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to begin transaction",
+            )
+                .into_response();
+        }
+    };
+
+    let household_model = match household::Entity::find()
+        .filter(household::Column::PcoId.eq(household_id.clone()))
+        .one(&txn)
+        .await
+    {
+        Ok(Some(existing)) => {
+            let mut active_model: household::ActiveModel = existing.into();
+            active_model.name = Set(household_name);
+            active_model.avatar_url = Set(household_avatar_url);
+            active_model.is_signed_up = Set(true);
+            match active_model.update(&txn).await {
+                Ok(model) => model,
+                Err(_) => {
+                    let _ = txn.rollback().await;
+                    return (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "Failed to update household",
+                    )
+                        .into_response();
+                }
+            }
+        }
+        Ok(None) => {
+            let new_household = household::ActiveModel {
+                pco_id: Set(household_id.clone()),
+                organization_id: Set(organization_id),
+                name: Set(household_name),
+                avatar_url: Set(household_avatar_url),
+                is_signed_up: Set(true),
+                can_host: Set(false),
+                ..Default::default()
+            };
+            match new_household.insert(&txn).await {
+                Ok(model) => model,
+                Err(_) => {
+                    let _ = txn.rollback().await;
+                    return (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "Failed to insert household",
+                    )
+                        .into_response();
+                }
+            }
+        }
+        Err(_) => {
+            let _ = txn.rollback().await;
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to query household",
+            )
+                .into_response();
+        }
+    };
+
+    for pco_person in household_response.data {
+        let person_name = pco_person.attributes["name"]
+            .as_str()
+            .unwrap_or("")
+            .to_string();
+        let person_avatar_url = pco_person.attributes["avatar"]
+            .as_str()
+            .map(|s| s.to_string());
+        let person_email = pco_person.relationships.as_ref().and_then(|rels| {
+            rels.get("emails")
+                .and_then(|emails_val| emails_val.get("data"))
+                .and_then(|data_val| data_val.as_array())
+                .and_then(|data_arr| data_arr.first())
+                .and_then(|first_item| first_item.get("id"))
+                .and_then(|id_val| id_val.as_str())
+                .and_then(|email_id| {
+                    included_resources
+                        .iter()
+                        .find(|resource| {
+                            resource.resource_type == "Email" && resource.id == email_id
+                        })
+                        .and_then(|email_resource| {
+                            email_resource.attributes["address"]
+                                .as_str()
+                                .map(|s| s.to_string())
+                        })
+                })
+        });
+        let person_phone = pco_person.relationships.as_ref().and_then(|rels| {
+            rels.get("phone_numbers")
+                .and_then(|phones_val| phones_val.get("data"))
+                .and_then(|data_val| data_val.as_array())
+                .and_then(|data_arr| data_arr.first())
+                .and_then(|first_item| first_item.get("id"))
+                .and_then(|id_val| id_val.as_str())
+                .and_then(|phone_id| {
+                    included_resources
+                        .iter()
+                        .find(|resource| {
+                            resource.resource_type == "PhoneNumber" && resource.id == phone_id
+                        })
+                        .and_then(|phone_resource| {
+                            phone_resource.attributes["number"]
+                                .as_str()
+                                .map(|s| s.to_string())
+                        })
+                })
+        });
+        let person_address = pco_person.relationships.as_ref().and_then(|rels| {
+            rels.get("addresses")
+                .and_then(|addresses_val| addresses_val.get("data"))
+                .and_then(|data_val| data_val.as_array())
+                .and_then(|data_arr| data_arr.first())
+                .and_then(|first_item| first_item.get("id"))
+                .and_then(|id_val| id_val.as_str())
+                .and_then(|address_id| {
+                    included_resources
+                        .iter()
+                        .find(|resource| {
+                            resource.resource_type == "Address" && resource.id == address_id
+                        })
+                        .map(|address_resource| address_resource.attributes.clone())
+                })
+        });
+        let is_child = pco_person.attributes["child"].as_bool().unwrap_or(false);
+
+        let existing_person = match person::Entity::find()
+            .filter(person::Column::PcoId.eq(pco_person.id.clone()))
+            .one(&txn)
+            .await
+        {
+            Ok(person) => person,
+            Err(_) => {
+                let _ = txn.rollback().await;
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Failed to query person",
+                )
+                    .into_response();
+            }
+        };
+
+        if let Some(existing) = existing_person {
+            let mut active_model: person::ActiveModel = existing.into();
+            active_model.name = Set(person_name);
+            active_model.email = Set(person_email);
+            active_model.phone = Set(person_phone);
+            active_model.address = Set(person_address.unwrap_or_default());
+            active_model.avatar_url = Set(person_avatar_url);
+            active_model.is_child = Set(is_child);
+            active_model.household_id = Set(Some(household_model.id));
+            if active_model.update(&txn).await.is_err() {
+                let _ = txn.rollback().await;
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Failed to update person",
+                )
+                    .into_response();
+            }
+        } else {
+            let new_person = person::ActiveModel {
+                pco_id: Set(pco_person.id),
+                organization_id: Set(organization_id),
+                name: Set(person_name),
+                email: Set(person_email),
+                phone: Set(person_phone),
+                address: Set(person_address.unwrap_or_default()),
+                avatar_url: Set(person_avatar_url),
+                is_signed_up: Set(false),
+                can_host: Set(false),
+                is_child: Set(is_child),
+                household_id: Set(Some(household_model.id)),
+                ..Default::default()
+            };
+            if new_person.insert(&txn).await.is_err() {
+                let _ = txn.rollback().await;
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Failed to insert person",
+                )
+                    .into_response();
+            }
+        }
+    }
+
+    match txn.commit().await {
+        Ok(_) => (StatusCode::OK, "Household and people signed up").into_response(),
+        Err(_) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to commit transaction",
+        )
+            .into_response(),
+    }
 }
