@@ -130,7 +130,6 @@ impl AuthnBackend for Backend {
             .await
             .map_err(Self::Error::Seaorm)?;
 
-        debug!("Handling organization");
         let organization = match existing_org {
             Some(existing) => {
                 // Update existing org
@@ -150,7 +149,6 @@ impl AuthnBackend for Backend {
                     avatar_url: Set(org.avatar_url),
                     ..Default::default()
                 };
-                debug!("Creating new organization: {:?}", org_model);
                 org_model
                     .insert(&self.db)
                     .await
@@ -159,7 +157,6 @@ impl AuthnBackend for Backend {
         };
 
         // Start creating the person record
-        debug!("Handling person");
         let mut is_new_person = false;
         let person = Person::find()
             .filter(person::Column::PcoId.eq(user_data.id.clone()))
@@ -227,7 +224,6 @@ impl AuthnBackend for Backend {
                             avatar_url: Set(household.avatar),
                             ..Default::default()
                         };
-                        debug!("Creating new household: {:?}", household_model);
                         household_model
                             .insert(&self.db)
                             .await
@@ -239,7 +235,6 @@ impl AuthnBackend for Backend {
             None => None,
         };
 
-        debug!("Creating new person: {:?}", person);
         person.household_id = match household {
             Some(ref h) => Set(Some(h.id)),
             None => NotSet,
@@ -257,7 +252,6 @@ impl AuthnBackend for Backend {
             .await
             .map_err(Self::Error::Seaorm)?;
 
-        debug!("Handling user");
         let user = match user {
             Some(user) => {
                 let mut user_model = user.into_active_model();
@@ -278,7 +272,6 @@ impl AuthnBackend for Backend {
                     token_expires_at: Set(token_expires_at),
                     ..Default::default()
                 };
-                debug!("Creating new user: {:?}", user_model);
                 user_model
                     .insert(&self.db)
                     .await
