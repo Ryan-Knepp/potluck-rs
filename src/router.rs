@@ -7,7 +7,7 @@ use crate::{
         api::{api_pco, api_people},
         dashboard::dashboard,
         me::me,
-        search::{search, search_partial, sign_up_household},
+        search::{search, search_partial, sign_up_household, sign_up_person},
     },
     util::asset_loader::AssetLoader,
 };
@@ -75,6 +75,10 @@ pub async fn create_router(
         .route(
             "/search/sign-up-household/{household_id}",
             post(sign_up_household),
+        )
+        .route(
+            "/search/sign-up-person/{person_id}",
+            post(sign_up_person),
         )
         .route("/api/people", get(api_people))
         .route("/api/pco", get(api_pco))

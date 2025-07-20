@@ -63,6 +63,21 @@ pub async fn get_user_info(access_token: &String) -> Result<Option<PersonData>, 
     Ok(parse_complete_response(data))
 }
 
+pub async fn get_person(
+    access_token: &str,
+    person_id: &str,
+) -> Result<Option<PersonData>, reqwest::Error> {
+    let data = reqwest::Client::new()
+        .get(format!("{BASE_URL}people/{person_id}?{INCLUDED}"))
+        .bearer_auth(access_token)
+        .send()
+        .await?
+        .json::<PCOMeResponse>()
+        .await?;
+
+    Ok(parse_complete_response(data))
+}
+
 fn parse_complete_response(response: PCOMeResponse) -> Option<PersonData> {
     let (addresses, emails, phones, organizations, households) = process_included(response.included);
 
