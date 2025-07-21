@@ -13,7 +13,6 @@ use sea_orm::{ActiveValue::*, IntoActiveModel, prelude::*};
 use sea_orm::{DatabaseConnection, EntityTrait, Set};
 use serde::Deserialize;
 use tokio::spawn;
-use tracing::debug;
 
 use crate::entities::{household, organization, person, prelude::*, user};
 use crate::pco::person::get_user_info;
