@@ -160,14 +160,14 @@ pub async fn sign_up_household(
     };
 
     let household_model = match household::Entity::find()
-        .filter(household::Column::PcoId.eq(household_id.clone()))
+        .filter(household::Column::PcoId.eq(&household_id))
         .one(&txn)
         .await
     {
         Ok(Some(existing)) => {
             let mut active_model: household::ActiveModel = existing.into();
-            active_model.name = Set(household_info.name.clone());
-            active_model.avatar_url = Set(household_info.avatar.clone());
+            active_model.name = Set(household_info.name);
+            active_model.avatar_url = Set(household_info.avatar);
             active_model.is_signed_up = Set(true);
             match active_model.update(&txn).await {
                 Ok(model) => model,
@@ -183,10 +183,10 @@ pub async fn sign_up_household(
         }
         Ok(None) => {
             let new_household = household::ActiveModel {
-                pco_id: Set(household_id.clone()),
+                pco_id: Set(household_id),
                 organization_id: Set(organization_id),
-                name: Set(household_info.name.clone()),
-                avatar_url: Set(household_info.avatar.clone()),
+                name: Set(household_info.name),
+                avatar_url: Set(household_info.avatar),
                 is_signed_up: Set(true),
                 can_host: Set(false),
                 ..Default::default()
@@ -216,7 +216,7 @@ pub async fn sign_up_household(
     if let Some(people) = household_info.people {
         for pco_person in people {
             let existing_person = match person::Entity::find()
-                .filter(person::Column::PcoId.eq(pco_person.id.clone()))
+                .filter(person::Column::PcoId.eq(&pco_person.id))
                 .one(&txn)
                 .await
             {
@@ -230,11 +230,11 @@ pub async fn sign_up_household(
 
             if let Some(existing) = existing_person {
                 let mut active_model: person::ActiveModel = existing.into();
-                active_model.name = Set(pco_person.name.clone());
-                active_model.email = Set(pco_person.email.clone());
-                active_model.phone = Set(pco_person.phone.clone());
-                active_model.address = Set(pco_person.address.clone().unwrap_or_default());
-                active_model.avatar_url = Set(pco_person.avatar.clone());
+                active_model.name = Set(pco_person.name);
+                active_model.email = Set(pco_person.email);
+                active_model.phone = Set(pco_person.phone);
+                active_model.address = Set(pco_person.address.unwrap_or_default());
+                active_model.avatar_url = Set(pco_person.avatar);
                 active_model.is_child = Set(pco_person.is_child);
                 active_model.household_id = Set(Some(household_model.id));
                 if active_model.update(&txn).await.is_err() {
@@ -244,13 +244,13 @@ pub async fn sign_up_household(
                 }
             } else {
                 let new_person = person::ActiveModel {
-                    pco_id: Set(pco_person.id.clone()),
+                    pco_id: Set(pco_person.id),
                     organization_id: Set(organization_id),
-                    name: Set(pco_person.name.clone()),
-                    email: Set(pco_person.email.clone()),
-                    phone: Set(pco_person.phone.clone()),
-                    address: Set(pco_person.address.clone().unwrap_or_default()),
-                    avatar_url: Set(pco_person.avatar.clone()),
+                    name: Set(pco_person.name),
+                    email: Set(pco_person.email),
+                    phone: Set(pco_person.phone),
+                    address: Set(pco_person.address.unwrap_or_default()),
+                    avatar_url: Set(pco_person.avatar),
                     is_signed_up: Set(false),
                     can_host: Set(false),
                     is_child: Set(pco_person.is_child),
@@ -323,14 +323,14 @@ pub async fn sign_up_person(
     // Handle Organization
     let organization_model = if let Some(org_info) = person_data.organization.clone() {
         match organization::Entity::find()
-            .filter(organization::Column::PcoId.eq(org_info.id.clone()))
+            .filter(organization::Column::PcoId.eq(&org_info.id))
             .one(&txn)
             .await
         {
             Ok(Some(existing)) => {
                 let mut active_model: organization::ActiveModel = existing.into();
-                active_model.name = Set(org_info.name.clone());
-                active_model.avatar_url = Set(org_info.avatar_url.clone());
+                active_model.name = Set(org_info.name);
+                active_model.avatar_url = Set(org_info.avatar_url);
                 match active_model.update(&txn).await {
                     Ok(model) => model,
                     Err(_) => {
@@ -345,9 +345,9 @@ pub async fn sign_up_person(
             }
             Ok(None) => {
                 let new_org = organization::ActiveModel {
-                    pco_id: Set(org_info.id.clone()),
-                    name: Set(org_info.name.clone()),
-                    avatar_url: Set(org_info.avatar_url.clone()),
+                    pco_id: Set(org_info.id),
+                    name: Set(org_info.name),
+                    avatar_url: Set(org_info.avatar_url),
                     ..Default::default()
                 };
                 match new_org.insert(&txn).await {
@@ -391,7 +391,7 @@ pub async fn sign_up_person(
 
     // Handle Person
     let existing_person = match person::Entity::find()
-        .filter(person::Column::PcoId.eq(person_data.id.clone()))
+        .filter(person::Column::PcoId.eq(&person_data.id))
         .one(&txn)
         .await
     {
@@ -404,11 +404,11 @@ pub async fn sign_up_person(
 
     if let Some(existing) = existing_person {
         let mut active_model: person::ActiveModel = existing.into();
-        active_model.name = Set(person_data.name.clone());
-        active_model.email = Set(person_data.email.clone());
-        active_model.phone = Set(person_data.phone.clone());
-        active_model.address = Set(person_data.address.clone().unwrap_or_default());
-        active_model.avatar_url = Set(person_data.avatar.clone());
+        active_model.name = Set(person_data.name);
+        active_model.email = Set(person_data.email);
+        active_model.phone = Set(person_data.phone);
+        active_model.address = Set(person_data.address.unwrap_or_default());
+        active_model.avatar_url = Set(person_data.avatar);
         active_model.is_child = Set(person_data.is_child);
         active_model.is_signed_up = Set(true);
         active_model.organization_id = Set(organization_model.id);
@@ -418,13 +418,13 @@ pub async fn sign_up_person(
         }
     } else {
         let new_person = person::ActiveModel {
-            pco_id: Set(person_data.id.clone()),
+            pco_id: Set(person_data.id),
             organization_id: Set(organization_model.id),
-            name: Set(person_data.name.clone()),
-            email: Set(person_data.email.clone()),
-            phone: Set(person_data.phone.clone()),
-            address: Set(person_data.address.clone().unwrap_or_default()),
-            avatar_url: Set(person_data.avatar.clone()),
+            name: Set(person_data.name),
+            email: Set(person_data.email),
+            phone: Set(person_data.phone),
+            address: Set(person_data.address.unwrap_or_default()),
+            avatar_url: Set(person_data.avatar),
             is_signed_up: Set(true),
             can_host: Set(false),
             is_child: Set(person_data.is_child),
