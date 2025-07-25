@@ -17,6 +17,7 @@ pub struct PersonData {
     pub is_child: bool,
     pub household: Option<HouseholdInfo>,
     pub organization: Option<OrganizationInfo>,
+    pub is_signed_up: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -27,6 +28,7 @@ pub struct HouseholdInfo {
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub people: Option<Vec<PersonData>>,
+    pub is_signed_up: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -161,6 +163,9 @@ pub fn parse_person_resource(
             if !household_data.is_empty() {
                 if let Some(household_id) = household_data[0]["id"].as_str() {
                     person_household = households.get(household_id).cloned();
+                    if let Some(h) = &mut person_household {
+                        h.is_signed_up = None;
+                    }
                 }
             }
         }
@@ -177,6 +182,7 @@ pub fn parse_person_resource(
         is_child,
         organization: person_organization,
         household: person_household,
+        is_signed_up: false,
     })
 }
 

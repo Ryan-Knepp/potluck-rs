@@ -15,12 +15,71 @@ use crate::auth::user::ensure_valid_access_token;
 use crate::entities::user::Entity as UserEntity;
 use crate::entities::{household, organization, person};
 use crate::pco::household::get_household_people;
-use crate::pco::person::{PeoplePage, get_people, get_person};
+use crate::pco::person::{get_people, get_person, PeoplePage};
 
 #[derive(Deserialize)]
 pub struct PeopleQuery {
     pub offset: Option<usize>,
     pub name: Option<String>,
+}
+
+async fn get_people_with_signup_status(
+    state: &AppState,
+    user: &mut crate::entities::user::Model,
+    page: usize,
+    per_page: usize,
+    name: Option<String>,
+) -> Result<PeoplePage, String> {
+    if ensure_valid_access_token(user, &state.db, &state.client)
+        .await
+        .is_err()
+    {
+        return Err("Invalid token".to_string());
+    }
+
+    let mut people_page = get_people(&user.access_token, page, per_page, name.clone())
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let pco_ids: Vec<String> = people_page
+        .people
+        .iter()
+        .map(|p| p.id.clone())
+        .collect();
+
+    let persons_in_db = person::Entity::find()
+        .filter(person::Column::PcoId.is_in(pco_ids))
+        .all(&state.db)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let household_ids: Vec<String> = people_page
+        .people
+        .iter()
+        .filter_map(|p| p.household.as_ref().map(|h| h.id.clone()))
+        .collect();
+
+    let households_in_db = household::Entity::find()
+        .filter(household::Column::PcoId.is_in(household_ids))
+        .all(&state.db)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    for person_data in &mut people_page.people {
+        if let Some(person_in_db) = persons_in_db.iter().find(|p| p.pco_id == person_data.id) {
+            person_data.is_signed_up = person_in_db.is_signed_up;
+        }
+        if let Some(household_info) = &mut person_data.household {
+            if let Some(household_in_db) = households_in_db
+                .iter()
+                .find(|h| h.pco_id == household_info.id)
+            {
+                household_info.is_signed_up = Some(household_in_db.is_signed_up);
+            }
+        }
+    }
+
+    Ok(people_page)
 }
 
 pub async fn search(State(state): State<AppState>, auth_session: AuthSession) -> impl IntoResponse {
@@ -33,25 +92,16 @@ pub async fn search(State(state): State<AppState>, auth_session: AuthSession) ->
         Ok(Some(u)) => u,
         _ => return (StatusCode::UNAUTHORIZED, "User not found").into_response(),
     };
-    // Ensure access token is valid (refresh if needed)
-    if ensure_valid_access_token(&mut user, &state.db, &state.client)
-        .await
-        .is_err()
-    {
-        return (StatusCode::UNAUTHORIZED, "Invalid token").into_response();
-    }
-    let offset = 0;
+
     let per_page = 25;
-    let people_page = get_people(&user.access_token, 1, per_page, None)
-        .await
-        .unwrap_or_else(|_| PeoplePage {
-            people: vec![],
-            total_count: 0,
-            count: 0,
-            page: 1,
-        });
-    let has_more = people_page.count + offset < people_page.total_count;
-    let next_offset = offset + per_page;
+    let people_page =
+        match get_people_with_signup_status(&state, &mut user, 1, per_page, None).await {
+            Ok(page) => page,
+            Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
+        };
+
+    let has_more = people_page.count < people_page.total_count;
+    let next_offset = per_page;
     let tmpl = state.templates.get_template("search.html").unwrap();
     let html = tmpl
         .render(context! {
@@ -77,27 +127,19 @@ pub async fn search_partial(
         Ok(Some(u)) => u,
         _ => return (StatusCode::UNAUTHORIZED, "User not found").into_response(),
     };
-    if ensure_valid_access_token(&mut user, &state.db, &state.client)
-        .await
-        .is_err()
-    {
-        return (StatusCode::UNAUTHORIZED, "Invalid token").into_response();
-    }
+
     let offset = query.offset.unwrap_or(0);
     let per_page = 25;
-    let people_page = get_people(
-        &user.access_token,
-        offset / per_page + 1,
-        per_page,
-        query.name.clone(),
-    )
-    .await
-    .unwrap_or_else(|_| PeoplePage {
-        people: vec![],
-        total_count: 0,
-        count: 0,
-        page: offset / per_page + 1,
-    });
+    let page = offset / per_page + 1;
+
+    let people_page =
+        match get_people_with_signup_status(&state, &mut user, page, per_page, query.name.clone())
+            .await
+        {
+            Ok(page) => page,
+            Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
+        };
+
     let has_more = offset + people_page.count < people_page.total_count;
     let next_offset = offset + per_page;
     let tmpl = state
@@ -119,6 +161,7 @@ pub async fn sign_up_household(
     State(state): State<AppState>,
     auth_session: AuthSession,
     Path(household_id): Path<String>,
+    Query(query): Query<PeopleQuery>,
 ) -> impl IntoResponse {
     let user_id = match auth_session.user {
         Some(u) => u.id,
@@ -267,7 +310,43 @@ pub async fn sign_up_household(
     }
 
     match txn.commit().await {
-        Ok(_) => (StatusCode::OK, "Household and people signed up").into_response(),
+        Ok(_) => {
+            let offset = query.offset.unwrap_or(0);
+            let per_page = 25;
+            let page = offset / per_page + 1;
+            let mut user = match UserEntity::find_by_id(user.id).one(&state.db).await {
+                Ok(Some(u)) => u,
+                _ => return (StatusCode::UNAUTHORIZED, "User not found").into_response(),
+            };
+            let people_page = match get_people_with_signup_status(
+                &state,
+                &mut user,
+                page,
+                per_page,
+                query.name.clone(),
+            )
+            .await
+            {
+                Ok(page) => page,
+                Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
+            };
+
+            let has_more = offset + people_page.count < people_page.total_count;
+            let next_offset = offset + per_page;
+            let tmpl = state
+                .templates
+                .get_template("people_table_rows.html")
+                .unwrap();
+            let html = tmpl
+                .render(context! {
+                    people => people_page.people,
+                    has_more => has_more,
+                    next_offset => next_offset,
+                    name => query.name.clone().unwrap_or_default(),
+                })
+                .unwrap();
+            Html(html).into_response()
+        }
         Err(_) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             "Failed to commit transaction",
@@ -280,6 +359,7 @@ pub async fn sign_up_person(
     State(state): State<AppState>,
     auth_session: AuthSession,
     Path(person_id): Path<String>,
+    Query(query): Query<PeopleQuery>,
 ) -> impl IntoResponse {
     let user_id = match auth_session.user {
         Some(u) => u.id,
@@ -438,7 +518,43 @@ pub async fn sign_up_person(
     }
 
     match txn.commit().await {
-        Ok(_) => (StatusCode::OK, "Person signed up").into_response(),
+        Ok(_) => {
+            let offset = query.offset.unwrap_or(0);
+            let per_page = 25;
+            let page = offset / per_page + 1;
+            let mut user = match UserEntity::find_by_id(user.id).one(&state.db).await {
+                Ok(Some(u)) => u,
+                _ => return (StatusCode::UNAUTHORIZED, "User not found").into_response(),
+            };
+            let people_page = match get_people_with_signup_status(
+                &state,
+                &mut user,
+                page,
+                per_page,
+                query.name.clone(),
+            )
+            .await
+            {
+                Ok(page) => page,
+                Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
+            };
+
+            let has_more = offset + people_page.count < people_page.total_count;
+            let next_offset = offset + per_page;
+            let tmpl = state
+                .templates
+                .get_template("people_table_rows.html")
+                .unwrap();
+            let html = tmpl
+                .render(context! {
+                    people => people_page.people,
+                    has_more => has_more,
+                    next_offset => next_offset,
+                    name => query.name.clone().unwrap_or_default(),
+                })
+                .unwrap();
+            Html(html).into_response()
+        }
         Err(_) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             "Failed to commit transaction",

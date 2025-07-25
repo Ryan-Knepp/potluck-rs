@@ -97,6 +97,7 @@ pub fn process_included(included: Vec<PCOResource>) -> IncludedHashes {
                         name: item.attributes["name"].as_str().unwrap_or("").to_string(),
                         avatar: item.attributes["avatar"].as_str().map(|s| s.to_string()),
                         people: None,
+                        is_signed_up: None,
                     },
                 );
             }

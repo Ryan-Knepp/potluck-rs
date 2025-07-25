@@ -22,23 +22,52 @@
   >
     {{ person.phone }}
   </td>
-  <td class="px-6 py-4 whitespace-nowrap">
-    <div class="flex gap-2">
+  <td class="px-6 py-4 whitespace-nowrap flex items-center gap-2">
+    {% if person.is_signed_up or (person.household and
+    person.household.is_signed_up) %}
+    <span class="text-slate-500 dark:text-slate-400">Already signed up</span>
+    {% else %}
+    <div class="flex gap-2" hx-indicator=".htmx-indicator">
       <button
         class="btn btn-primary bg-purple-600 hover:bg-purple-700 text-purple-50 dark:bg-purple-700 dark:hover:bg-purple-800 dark:text-purple-100"
-        hx-post="/search/sign-up-person/{{ person.id }}"
+        hx-post="/search/sign-up-person/{{ person.id }}?name={{ name|urlencode }}"
+        hx-target="#people-table-body"
       >
         Sign Up Person
       </button>
       {% if person.household %}
       <button
         class="btn btn-primary bg-purple-600 hover:bg-purple-700 text-purple-50 dark:bg-purple-700 dark:hover:bg-purple-800 dark:text-purple-100"
-        hx-post="/search/sign-up-household/{{ person.household.id }}"
+        hx-post="/search/sign-up-household/{{ person.household.id }}?name={{ name|urlencode }}"
+        hx-target="#people-table-body"
       >
         Sign Up Family
       </button>
       {% endif %}
     </div>
+    <div class="htmx-indicator">
+      <svg
+        class="animate-spin h-5 w-5 text-purple-500"
+        xmlns="http://www.w3.org/2000/svg"
+        fill="none"
+        viewBox="0 0 24 24"
+      >
+        <circle
+          class="opacity-25"
+          cx="12"
+          cy="12"
+          r="10"
+          stroke="currentColor"
+          stroke-width="4"
+        ></circle>
+        <path
+          class="opacity-75"
+          fill="currentColor"
+          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+        ></path>
+      </svg>
+    </div>
+    {% endif %}
   </td>
 </tr>
 {% endfor %} {% if has_more %}
