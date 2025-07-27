@@ -10,9 +10,8 @@ use oauth2::{AuthorizationCode, TokenResponse};
 use oauth2::{CsrfToken, HttpClientError, Scope, basic::BasicRequestTokenError};
 use reqwest::Url;
 use sea_orm::{ActiveValue::*, IntoActiveModel, prelude::*};
-use sea_orm::{DatabaseConnection, EntityTrait, Set};
+use sea_orm::{ConnectionTrait, DatabaseConnection, EntityTrait, Set, TransactionTrait};
 use serde::Deserialize;
-use tokio::spawn;
 
 use crate::entities::{household, organization, person, prelude::*, user};
 use crate::pco::person::get_user_info;
@@ -39,7 +38,7 @@ pub struct Credentials {
 #[derive(Debug, thiserror::Error)]
 pub enum BackendError {
     #[error(transparent)]
-    Seaorm(sea_orm::DbErr),
+    Seaorm(#[from] sea_orm::DbErr),
 
     #[error("User not found")]
     UnknownUser,
@@ -48,10 +47,10 @@ pub enum BackendError {
     UnknownOrganization,
 
     #[error(transparent)]
-    Reqwest(reqwest::Error),
+    Reqwest(#[from] reqwest::Error),
 
     #[error(transparent)]
-    OAuth2(BasicRequestTokenError<HttpClientError<reqwest::Error>>),
+    OAuth2(#[from] BasicRequestTokenError<HttpClientError<reqwest::Error>>),
 }
 
 #[derive(Debug, Clone)]
@@ -99,19 +98,16 @@ impl AuthnBackend for Backend {
             .client
             .exchange_code(AuthorizationCode::new(creds.code))
             .request_async(&http_client)
-            .await
-            .map_err(Self::Error::OAuth2)?;
+            .await?;
 
-        let access_token = token_res.access_token().secret();
+        let access_token = token_res.access_token().secret().to_string();
         let refresh_token = token_res.refresh_token().map(|t| t.secret().to_string());
         let expires_in = token_res
             .expires_in()
             .unwrap_or_else(|| std::time::Duration::from_secs(7200));
         let token_expires_at =
             chrono::Utc::now().naive_utc() + TimeDelta::seconds(expires_in.as_secs() as i64);
-        let user_info = get_user_info(access_token)
-            .await
-            .map_err(Self::Error::Reqwest)?;
+        let user_info = get_user_info(&access_token).await?;
 
         if user_info.is_none() {
             return Err(Self::Error::UnknownUser);
@@ -119,184 +115,172 @@ impl AuthnBackend for Backend {
 
         let user_data = user_info.ok_or(Self::Error::UnknownUser)?;
 
-        // Persist user in our database so we can use `get_user`.
-        let org = user_data
-            .organization
-            .ok_or(Self::Error::UnknownOrganization)?;
-        let existing_org = Organization::find()
-            .filter(organization::Column::PcoId.eq(org.id.clone()))
-            .one(&self.db)
-            .await
-            .map_err(Self::Error::Seaorm)?;
+        let user = self
+            .db
+            .transaction::<_, user::Model, Self::Error>(|txn| {
+                Box::pin(async move {
+                    // Persist user in our database so we can use `get_user`.
+                    let org = user_data
+                        .organization
+                        .ok_or(Self::Error::UnknownOrganization)?;
+                    let existing_org = Organization::find()
+                        .filter(organization::Column::PcoId.eq(org.id.clone()))
+                        .one(txn)
+                        .await?;
 
-        let organization = match existing_org {
-            Some(existing) => {
-                // Update existing org
-                let mut org_model: organization::ActiveModel = existing.into();
-                org_model.name = Set(org.name);
-                org_model.avatar_url = Set(org.avatar_url);
-                org_model
-                    .update(&self.db)
-                    .await
-                    .map_err(Self::Error::Seaorm)?
-            }
-            None => {
-                // Create new org
-                let org_model = organization::ActiveModel {
-                    pco_id: Set(org.id),
-                    name: Set(org.name),
-                    avatar_url: Set(org.avatar_url),
-                    ..Default::default()
-                };
-                org_model
-                    .insert(&self.db)
-                    .await
-                    .map_err(Self::Error::Seaorm)?
-            }
-        };
+                    let organization = match existing_org {
+                        Some(existing) => {
+                            // Update existing org
+                            let mut org_model: organization::ActiveModel = existing.into();
+                            org_model.name = Set(org.name);
+                            org_model.avatar_url = Set(org.avatar_url);
+                            org_model.update(txn).await?
+                        }
+                        None => {
+                            // Create new org
+                            let org_model = organization::ActiveModel {
+                                pco_id: Set(org.id),
+                                name: Set(org.name),
+                                avatar_url: Set(org.avatar_url),
+                                ..Default::default()
+                            };
+                            org_model.insert(txn).await?
+                        }
+                    };
 
-        // Start creating the person record
-        let mut is_new_person = false;
-        let person = Person::find()
-            .filter(person::Column::PcoId.eq(user_data.id.clone()))
-            .one(&self.db)
-            .await
-            .map_err(Self::Error::Seaorm)?;
-        let mut person = match person {
-            Some(existing) => {
-                let mut person = existing.into_active_model();
-                person.name = Set(user_data.name);
-                person.avatar_url = Set(user_data.avatar);
-                person.email = Set(user_data.email);
-                person.phone = Set(user_data.phone);
-                person.address = Set(user_data.address.unwrap_or_default());
-                person.updated_at = Set(chrono::Utc::now().naive_utc());
-                person
-            }
-            None => {
-                // Create new person
-                is_new_person = true;
-                person::ActiveModel {
-                    id: NotSet,
-                    organization_id: Set(organization.id),
-                    pco_id: Set(user_data.id),
-                    name: Set(user_data.name),
-                    avatar_url: Set(user_data.avatar),
-                    email: Set(user_data.email),
-                    phone: Set(user_data.phone),
-                    address: Set(user_data.address.unwrap_or_default()),
-                    can_host: Set(false),
-                    is_signed_up: Set(false),
-                    is_child: Set(false),
-                    household_id: Set(None),
-                    created_at: Set(chrono::Utc::now().naive_utc()),
-                    updated_at: Set(chrono::Utc::now().naive_utc()),
-                }
-            }
-        };
+                    // Start creating the person record
+                    let mut is_new_person = false;
+                    let person = Person::find()
+                        .filter(person::Column::PcoId.eq(user_data.id.clone()))
+                        .one(txn)
+                        .await?;
+                    let mut person = match person {
+                        Some(existing) => {
+                            let mut person = existing.into_active_model();
+                            person.name = Set(user_data.name);
+                            person.avatar_url = Set(user_data.avatar);
+                            person.email = Set(user_data.email);
+                            person.phone = Set(user_data.phone);
+                            person.address = Set(user_data.address.unwrap_or_default());
+                            person.updated_at = Set(chrono::Utc::now().naive_utc());
+                            person
+                        }
+                        None => {
+                            // Create new person
+                            is_new_person = true;
+                            person::ActiveModel {
+                                id: NotSet,
+                                organization_id: Set(organization.id),
+                                pco_id: Set(user_data.id),
+                                name: Set(user_data.name),
+                                avatar_url: Set(user_data.avatar),
+                                email: Set(user_data.email),
+                                phone: Set(user_data.phone),
+                                address: Set(user_data.address.unwrap_or_default()),
+                                can_host: Set(false),
+                                is_signed_up: Set(false),
+                                is_child: Set(false),
+                                household_id: Set(None),
+                                created_at: Set(chrono::Utc::now().naive_utc()),
+                                updated_at: Set(chrono::Utc::now().naive_utc()),
+                            }
+                        }
+                    };
 
-        let household: Option<household::Model> = match user_data.household {
-            Some(household) => {
-                let existing_household = Household::find()
-                    .filter(household::Column::PcoId.eq(household.id.clone()))
-                    .one(&self.db)
-                    .await
-                    .map_err(Self::Error::Seaorm)?;
+                    let household: Option<household::Model> = match user_data.household {
+                        Some(household) => {
+                            let existing_household = Household::find()
+                                .filter(household::Column::PcoId.eq(household.id.clone()))
+                                .one(txn)
+                                .await?;
 
-                let household = match existing_household {
-                    Some(existing) => {
-                        // Update existing household
-                        let mut household_model: household::ActiveModel = existing.into();
-                        household_model.name = Set(household.name);
-                        household_model.avatar_url = Set(household.avatar);
-                        household_model
-                            .update(&self.db)
-                            .await
-                            .map_err(Self::Error::Seaorm)?
+                            let household = match existing_household {
+                                Some(existing) => {
+                                    // Update existing household
+                                    let mut household_model: household::ActiveModel =
+                                        existing.into();
+                                    household_model.name = Set(household.name);
+                                    household_model.avatar_url = Set(household.avatar);
+                                    household_model.update(txn).await?
+                                }
+                                None => {
+                                    // Create new household
+                                    let household_model = household::ActiveModel {
+                                        organization_id: Set(organization.id),
+                                        pco_id: Set(household.id),
+                                        name: Set(household.name),
+                                        avatar_url: Set(household.avatar),
+                                        ..Default::default()
+                                    };
+                                    household_model.insert(txn).await?
+                                }
+                            };
+                            Some(household)
+                        }
+                        None => None,
+                    };
+
+                    person.household_id = match household {
+                        Some(ref h) => Set(Some(h.id)),
+                        None => NotSet,
+                    };
+
+                    let person = match is_new_person {
+                        true => person.insert(txn).await?,
+                        false => person.update(txn).await?,
+                    };
+
+                    let user = user::Entity::find()
+                        .filter(user::Column::PersonId.eq(person.id))
+                        .filter(user::Column::OrganizationId.eq(organization.id))
+                        .one(txn)
+                        .await?;
+
+                    let user = match user {
+                        Some(user) => {
+                            let mut user_model = user.into_active_model();
+                            user_model.access_token = Set(access_token.clone());
+                            user_model.refresh_token = Set(refresh_token.clone());
+                            user_model.token_expires_at = Set(token_expires_at);
+                            user_model.update(txn).await?
+                        }
+                        None => {
+                            let user_model = user::ActiveModel {
+                                person_id: Set(person.id),
+                                organization_id: Set(organization.id),
+                                access_token: Set(access_token.clone()),
+                                refresh_token: Set(refresh_token.clone()),
+                                token_expires_at: Set(token_expires_at),
+                                ..Default::default()
+                            };
+                            user_model.insert(txn).await?
+                        }
+                    };
+
+                    if is_new_person && household.is_some() {
+                        let pco_id = household.unwrap().pco_id;
+                        get_household_data(pco_id, txn).await?;
                     }
-                    None => {
-                        // Create new household
-                        let household_model = household::ActiveModel {
-                            organization_id: Set(organization.id),
-                            pco_id: Set(household.id),
-                            name: Set(household.name),
-                            avatar_url: Set(household.avatar),
-                            ..Default::default()
-                        };
-                        household_model
-                            .insert(&self.db)
-                            .await
-                            .map_err(Self::Error::Seaorm)?
-                    }
-                };
-                Some(household)
-            }
-            None => None,
-        };
 
-        person.household_id = match household {
-            Some(ref h) => Set(Some(h.id)),
-            None => NotSet,
-        };
+                    Ok(user)
+                })
+            })
+            .await;
 
-        let person = match is_new_person {
-            true => person.insert(&self.db).await.map_err(Self::Error::Seaorm)?,
-            false => person.update(&self.db).await.map_err(Self::Error::Seaorm)?,
-        };
-
-        let user = user::Entity::find()
-            .filter(user::Column::PersonId.eq(person.id))
-            .filter(user::Column::OrganizationId.eq(organization.id))
-            .one(&self.db)
-            .await
-            .map_err(Self::Error::Seaorm)?;
-
-        let user = match user {
-            Some(user) => {
-                let mut user_model = user.into_active_model();
-                user_model.access_token = Set(access_token.clone());
-                user_model.refresh_token = Set(refresh_token.clone());
-                user_model.token_expires_at = Set(token_expires_at);
-                user_model
-                    .update(&self.db)
-                    .await
-                    .map_err(Self::Error::Seaorm)?
-            }
-            None => {
-                let user_model = user::ActiveModel {
-                    person_id: Set(person.id),
-                    organization_id: Set(organization.id),
-                    access_token: Set(access_token.clone()),
-                    refresh_token: Set(refresh_token.clone()),
-                    token_expires_at: Set(token_expires_at),
-                    ..Default::default()
-                };
-                user_model
-                    .insert(&self.db)
-                    .await
-                    .map_err(Self::Error::Seaorm)?
-            }
-        };
-
-        if is_new_person && household.is_some() {
-            let db = self.db.clone();
-            let pco_id = household.unwrap().pco_id;
-            spawn(async move {
-                if let Err(e) = get_household_data(pco_id, db).await {
-                    tracing::error!("Error getting household data: {:?}", e);
-                }
-            });
+        match user {
+            Ok(user) => Ok(Some(user)),
+            Err(e) => match e {
+                sea_orm::TransactionError::Connection(e) => Err(Self::Error::Seaorm(e)),
+                sea_orm::TransactionError::Transaction(e) => Err(e),
+            },
         }
-
-        Ok(Some(user))
     }
 
     async fn get_user(&self, user_id: &UserId<Self>) -> Result<Option<Self::User>, Self::Error> {
         let user = user::Entity::find()
             .filter(user::Column::Id.eq(*user_id))
             .one(&self.db)
-            .await
-            .map_err(Self::Error::Seaorm)?;
+            .await?;
 
         if let Some(user) = user {
             Ok(Some(user))
@@ -311,12 +295,14 @@ impl AuthnBackend for Backend {
 // Note that we've supplied our concrete backend here.
 pub type AuthSession = axum_login::AuthSession<Backend>;
 
-async fn get_household_data(pco_id: String, db: DatabaseConnection) -> Result<(), BackendError> {
+async fn get_household_data<C>(pco_id: String, db: &C) -> Result<(), BackendError>
+where
+    C: ConnectionTrait,
+{
     let household = Household::find()
         .filter(household::Column::PcoId.eq(pco_id))
-        .one(&db)
-        .await
-        .map_err(BackendError::Seaorm)?;
+        .one(db)
+        .await?;
 
     if household.is_none() {
         return Err(BackendError::UnknownUser);
