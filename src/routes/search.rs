@@ -144,7 +144,7 @@ pub async fn search_partial(
     let next_offset = offset + per_page;
     let tmpl = state
         .templates
-        .get_template("people_table_rows.html")
+        .get_template("search_table_rows.html")
         .unwrap();
     let html = tmpl
         .render(context! {
@@ -335,7 +335,7 @@ pub async fn sign_up_household(
             let next_offset = offset + per_page;
             let tmpl = state
                 .templates
-                .get_template("people_table_rows.html")
+                .get_template("search_table_rows.html")
                 .unwrap();
             let html = tmpl
                 .render(context! {
@@ -543,7 +543,7 @@ pub async fn sign_up_person(
             let next_offset = offset + per_page;
             let tmpl = state
                 .templates
-                .get_template("people_table_rows.html")
+                .get_template("search_table_rows.html")
                 .unwrap();
             let html = tmpl
                 .render(context! {
