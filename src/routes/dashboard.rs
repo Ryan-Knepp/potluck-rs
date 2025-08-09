@@ -5,9 +5,13 @@ use axum::{
 use chrono::Utc;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 
-use crate::{router::AppState, entities::potluck_series::{self, Entity as PotluckSeries}};
+use axum::response::Redirect;
+use crate::{auth::user::AuthSession, router::AppState, entities::potluck_series::{self, Entity as PotluckSeries}};
 
-pub async fn dashboard(State(state): State<AppState>) -> impl IntoResponse {
+pub async fn dashboard(State(state): State<AppState>, auth_session: AuthSession) -> impl IntoResponse {
+    if auth_session.user.is_none() {
+        return Redirect::to("/login").into_response();
+    }
     let now = Utc::now().naive_utc();
 
     // Get active series (where end_date >= today)
@@ -35,5 +39,5 @@ pub async fn dashboard(State(state): State<AppState>) -> impl IntoResponse {
         })
         .unwrap();
 
-    Html(html)
+    Html(html).into_response()
 }

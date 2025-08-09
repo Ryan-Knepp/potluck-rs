@@ -1,0 +1,41 @@
+{% from "_household_card.html" import household_card %} {% from
+"_person_card.html" import person_card %}
+
+<div x-data="{ tab: '{{ tab | default(value='active') }}' }">
+  <div class="border-b border-slate-200 dark:border-slate-700">
+    <nav class="-mb-px flex space-x-8" aria-label="Tabs">
+      <button
+        @click="tab = 'active'"
+        :class="{ 'border-purple-500 text-purple-600 dark:text-purple-400': tab === 'active', 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300 dark:text-slate-400 dark:hover:text-slate-200': tab !== 'active' }"
+        class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm"
+      >
+        Active
+      </button>
+      <button
+        @click="tab = 'inactive'"
+        :class="{ 'border-purple-500 text-purple-600 dark:text-purple-400': tab === 'inactive', 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300 dark:text-slate-400 dark:hover:text-slate-200': tab !== 'inactive' }"
+        class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm"
+      >
+        Inactive
+      </button>
+    </nav>
+  </div>
+
+  <div x-show="tab === 'active'" class="mt-6 flex flex-col space-y-6">
+    {% for (household, people) in households if household.is_signed_up %}
+      {{ household_card(household, people, 'active') }}
+    {% endfor %}
+    {% for person in people if person.is_signed_up %}
+      {{ person_card(person, 'active') }}
+    {% endfor %}
+  </div>
+
+  <div x-show="tab === 'inactive'" class="mt-6 flex flex-col space-y-6">
+    {% for (household, people) in households if not household.is_signed_up %}
+      {{ household_card(household, people, 'inactive') }}
+    {% endfor %}
+    {% for person in people if not person.is_signed_up %}
+      {{ person_card(person, 'inactive') }}
+    {% endfor %}
+  </div>
+</div>

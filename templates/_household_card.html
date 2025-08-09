@@ -1,0 +1,51 @@
+{% macro household_card(household, people, tab) %}
+<div class="bg-white dark:bg-slate-800 shadow rounded-lg overflow-hidden">
+  <div class="p-4">
+    <div class="flex items-center">
+      <img class="h-12 w-12 rounded-full object-cover" src="{{ household.avatar_url | default('https://placehold.co/256x256/663399/FFFFFF/png') }}" alt="Household Avatar">
+      <div class="ml-4">
+        <h3 class="text-lg font-medium text-slate-900 dark:text-slate-100">{{ household.name }}</h3>
+        <p class="text-sm text-slate-500 dark:text-slate-400">
+          Can host: {% if household.can_host %}Yes{% else %}No{% endif %}
+        </p>
+      </div>
+    </div>
+    <div class="mt-4">
+      {% for person in people %}
+        {% if not person.is_child %}
+          <p class="mt-0.5"><span class="text-md font-bold text-white">{{ person.name }}</span>{% if person.email %} <span class="text-sm text-slate-500 dark:text-slate-400">({{ person.email }})</span>{% endif %}{% if person.phone %} <span class="text-sm text-slate-500 dark:text-slate-400">- {{ person.phone }}</span>{% endif %}</p>
+        {% endif %}
+      {% endfor %}
+      {% set children = people|selectattr("is_child")|list %}
+      {% if children %}
+      <h4 class="text-md font-medium text-slate-900 dark:text-slate-100 mt-2">Children</h4>
+      <p class="text-sm text-slate-500 dark:text-slate-400">
+        {% for child in children %}
+          {{- child.name|split(' ')|first -}}
+          {%- if not loop.last %}, {% endif -%}
+        {% endfor %}
+      </p>
+      {% endif %}
+    </div>
+  </div>
+  <div class="border-t border-slate-200 dark:border-slate-700 px-4 py-3">
+    <div class="text-right">
+      <button hx-post="/people/household/{{ household.id }}/toggle-host?tab={{ tab }}" hx-target="#people-list" hx-swap="innerHTML"
+        class="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md shadow-sm text-slate-900 bg-slate-200 hover:bg-slate-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-500 dark:text-slate-100 dark:bg-slate-700 dark:hover:bg-slate-600">
+        {% if household.can_host %}Cannot Host{% else %}Can Host{% endif %}
+      </button>
+      {% if household.is_signed_up %}
+      <button hx-post="/people/household/{{ household.id }}/toggle-active?tab={{ tab }}" hx-target="#people-list" hx-swap="innerHTML"
+        class="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md shadow-sm text-slate-900 bg-slate-200 hover:bg-slate-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-500 dark:text-slate-100 dark:bg-slate-700 dark:hover:bg-slate-600">
+        Mark as Inactive
+      </button>
+      {% else %}
+      <button hx-post="/people/household/{{ household.id }}/toggle-active?tab={{ tab }}" hx-target="#people-list" hx-swap="innerHTML"
+        class="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md shadow-sm text-slate-900 bg-slate-200 hover:bg-slate-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-500 dark:text-slate-100 dark:bg-slate-700 dark:hover:bg-slate-600">
+        Mark as Active
+      </button>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endmacro %}

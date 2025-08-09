@@ -11,6 +11,11 @@
           >Dashboard</a
         >
         <a
+          href="/people"
+          class="px-3 py-2 text-sm font-medium rounded-md transition-colors duration-200 {% if active == 'people' %}text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-slate-800 border-purple-600 dark:border-purple-400{% else %}text-slate-700 dark:text-slate-200 hover:text-purple-700 dark:hover:text-purple-300 hover:bg-slate-50 dark:hover:bg-slate-800{% endif %}"
+          >People</a
+        >
+        <a
           href="/search"
           class="px-3 py-2 text-sm font-medium rounded-md transition-colors duration-200 {% if active == 'search' %}text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-slate-800 border-purple-600 dark:border-purple-400{% else %}text-slate-700 dark:text-slate-200 hover:text-purple-700 dark:hover:text-purple-300 hover:bg-slate-50 dark:hover:bg-slate-800{% endif %}"
           >Search</a

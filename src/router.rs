@@ -7,6 +7,7 @@ use crate::{
         api::{api_pco, api_people},
         dashboard::dashboard,
         me::me,
+        people,
         search::{search, search_partial, sign_up_household, sign_up_person},
     },
     util::asset_loader::AssetLoader,
@@ -70,6 +71,7 @@ pub async fn create_router(
     let app = Router::new()
         .route("/dashboard", get(dashboard))
         .route("/me", get(me))
+        .nest("/people", people::routes())
         .route("/search", get(search))
         .route("/search/partial", get(search_partial))
         .route(
