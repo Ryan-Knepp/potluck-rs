@@ -4,7 +4,7 @@
     <div class="flex items-center">
       <img class="h-12 w-12 rounded-full object-cover" src="{{ household.avatar_url | default('https://placehold.co/256x256/663399/FFFFFF/png') }}" alt="Household Avatar">
       <div class="ml-4">
-        <h3 class="text-lg font-medium text-slate-900 dark:text-slate-100">{{ household.name }}</h3>
+        <h3 class="text-lg font-bold text-slate-900 dark:text-slate-100">{{ household.name }}</h3>
         <p class="text-sm text-slate-500 dark:text-slate-400">
           Can host: {% if household.can_host %}Yes{% else %}No{% endif %}
         </p>
@@ -13,7 +13,7 @@
     <div class="mt-4">
       {% for person in people %}
         {% if not person.is_child %}
-          <p class="mt-0.5"><span class="text-md font-bold text-white">{{ person.name }}</span>{% if person.email %} <span class="text-sm text-slate-500 dark:text-slate-400">({{ person.email }})</span>{% endif %}{% if person.phone %} <span class="text-sm text-slate-500 dark:text-slate-400">- {{ person.phone }}</span>{% endif %}</p>
+          <p class="mt-0.5"><span class="text-md font-semibold text-slate-900 dark:text-slate-100">{{ person.name }}</span>{% if person.email %} <span class="text-sm text-slate-500 dark:text-slate-400">({{ person.email }})</span>{% endif %}{% if person.phone %} <span class="text-sm text-slate-500 dark:text-slate-400">- {{ person.phone }}</span>{% endif %}</p>
         {% endif %}
       {% endfor %}
       {% set children = people|selectattr("is_child")|list %}
